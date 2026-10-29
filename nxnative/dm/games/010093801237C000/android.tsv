@@ -8,6 +8,7 @@
 # intro (the VP9 movies, the text pages, the ship's cockpit) and Artaria's first room. The file is saved (00:00:00 in file select after a restart).
 # A 20-minute soak in Artaria's first rooms (walking, turning): one process throughout, 0 frames dropped on screen, no underrun, no red log line, footprint 1.5 GB.
 # 60 fps docked: in Artaria's first room 270 draws, replay 1.65 ms and GPU 5.9 ms a frame, 0 of 64 frames late on screen. Audio: no underrun in play.
+# The dark overgrowth over the statue of Artaria's first room is in Nintendo's own screenshot of that room (Metroid Dread Report vol. 8) too.
 status	playable
 tested	v327680 Lenovo Legion Y700 TB322FC (Snapdragon 8 Elite, Adreno 830, Android 16)
 package	org.nx2a.metroiddread
