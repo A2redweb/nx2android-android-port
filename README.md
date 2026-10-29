@@ -110,6 +110,12 @@ The commits before 2026-10-28 predate the rule.
 git subtree pull --prefix nxnative https://github.com/seedds/nxnative.git main --squash
 ```
 
+## Keys and game files
+
+nx2android decrypts your game files with your `prod.keys` while it ports them, as Switch emulators do. This repository and its releases contain no keys, no game files and nothing extracted from them, and the tool never downloads either. Dump both from your own Switch, and don't share them or the APKs and data packs built from them.
+
+Nintendo's takedown notices so far have gone to whoever hosts a project (13 Switch emulator repositories on GitHub in February 2026), not to players. Whether decrypting your own games for your own use is allowed depends on where you live.
+
 ## License
 
 MIT, as nxnative (see `nxnative/LICENSE`). Third-party code keeps its own license.
