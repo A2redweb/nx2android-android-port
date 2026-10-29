@@ -67,5 +67,5 @@ When the game boots on the device:
 ## 4. Playable
 
 - Play it on the device: title, menus, gameplay, a save, the pause menu, the on-screen gamepad, a controller if the game uses one, text entry if it asks for names, a few minutes of steady frame rate (`[perf]` lines) and no new `[RED]` lines.
-- Set `status playable` and `tested <version> <device>`; update the header comment and the games table in docs/PORT_STATUS.md (the game's icon is the build's `<title ID>_build/extract/<version>/icon.jpg`, copied to docs/images/).
+- Set `status playable` and `tested <version> <device>`; update the header comment and the games table in docs/PORT_STATUS.md. Its picture is a gameplay frame captured on the device while porting, saved as a 1280x720 JPEG in docs/images/: a frame shot (`DM_VK_SHOTS=1`, the switch-android-port skill's `frame_shots.sh`) or the last pass of a pass dump, so the on-screen gamepad is not in it (a game whose window origin is bottom-up, like Celeste, comes out upside down: flip it). Never the game's icon or an image from the internet.
 - Run `python -m unittest discover tests`; uninstall the test app; commit when asked.
