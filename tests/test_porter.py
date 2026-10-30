@@ -253,6 +253,44 @@ class Dumps(unittest.TestCase):   # porter/dumps.py: NSZ / XCZ → NSP; an NCZ m
         self.assertEqual(app, 0x0100000000AAA000); self.assertEqual(fam['base'].suffix, '.nsz')
 
 
+@unittest.skipUnless(importlib.util.find_spec('Crypto'), 'no pycryptodome')
+class UntaggedXci(unittest.TestCase):   # issue #28: a cartridge dump named by its release ("hr-bdlwa.xci") has no ticket and no [title ID]: the content meta NCA's header names it
+    BASE = 0x01009D901BC56000
+
+    def setUp(self):
+        rnd = random.Random(28); self.hk = bytes(rnd.getrandbits(8) for _ in range(32))
+        self.d = Path(tempfile.mkdtemp(prefix='nx2a_test_xci_'))
+        self.keys = self.d / 'prod.keys'; self.keys.write_text(f'header_key = {self.hk.hex()}\n')
+
+    def nca(self, tid, ctype):   # an NCA header (0xc00 bytes) whose second sector is encrypted as Nintendo does: AES-XTS, the sector number big-endian as the tweak
+        from Crypto.Cipher import AES
+        p = bytearray(0x200); p[:4] = b'NCA3'; p[5] = ctype; struct.pack_into('<Q', p, 0x10, tid)
+        data, t = AES.new(self.hk[:16], AES.MODE_ECB), int.from_bytes(AES.new(self.hk[16:], AES.MODE_ECB).encrypt((1).to_bytes(16, 'big')), 'little')
+        c = b''
+        for i in range(0, 0x200, 16):
+            tb = t.to_bytes(16, 'little'); c += bytes(a ^ b for a, b in zip(data.encrypt(bytes(a ^ b for a, b in zip(p[i:i + 16], tb))), tb))
+            t = (t << 1 & (1 << 128) - 1) ^ (0x87 if t >> 127 else 0)
+        return bytes(0x200) + c + bytes(0x800)
+
+    def xci(self, name, ncas, key_area=False):
+        root = _hfs0([('update', _hfs0([])), ('secure', _hfs0(ncas))])
+        x = bytearray(0x200); x[0x100:0x104] = b'HEAD'; x[0x130:0x138] = struct.pack('<Q', 0x200)
+        (self.d / name).write_bytes(bytes(0x1000 if key_area else 0) + bytes(x) + root)
+
+    def test_scan_reads_the_meta_nca(self):   # an update's program NCA carries the base game's title ID: only the meta NCA's counts, and the smallest of them is the base game
+        self.xci('hr-bdlwa.xci', [('a.nca', self.nca(self.BASE + 0x800, 0)), ('b.cnmt.nca', self.nca(self.BASE + 0x800, 1)), ('c.nca', self.nca(self.BASE, 0)), ('d.cnmt.nca', self.nca(self.BASE, 1))])
+        app, fam = pipeline.nsp.scan_nsps(self.d, ('nsp', 'xci'), self.keys)
+        self.assertEqual(app, self.BASE); self.assertEqual(fam['base'].name, 'hr-bdlwa.xci')
+        self.xci('hr-bdlwa.xci', [('c.nca', self.nca(self.BASE + 0x800, 0)), ('d.cnmt.nca', self.nca(self.BASE + 0x800, 1))], key_area=True)
+        self.assertEqual(pipeline.nsp.title_of(self.d / 'hr-bdlwa.xci', self.hk), self.BASE + 0x800)
+
+    def test_without_keys_the_error_says_how(self):
+        self.xci('hr-bdlwa.xci', [('d.cnmt.nca', self.nca(self.BASE, 1))])
+        with self.assertRaisesRegex(pipeline.BuildError, r'hr-bdlwa\.xci: no ticket .*no prod\.keys.*\[01009D901BC56000\]\[v0\]'): pipeline.nsp.scan_nsps(self.d, ('nsp', 'xci'))
+        self.keys.write_text(f'header_key = {bytes(32).hex()}\n')   # another key: the header does not decrypt to NCA3
+        with self.assertRaisesRegex(pipeline.BuildError, 'no content meta NCA'): pipeline.nsp.scan_nsps(self.d, ('nsp', 'xci'), self.keys)
+
+
 class FpsLocker(unittest.TestCase):   # porter/fpslocker.py: FPSLocker-Warehouse configs → the host's rows (hle_fpslock.c DM_FPS_LOCKS) and the rewriter's cuts
     BID = 'd49165c05ead8ae140f189aa97934f39'
     UNITY = ('ALL_FPS:\n  # Vsync\n  -\n    type: evaluate_write\n    address: [MAIN, 0x7A642D8]\n    value_type: int32\n    value: VSYNC_TARGET\n'
