@@ -88,7 +88,8 @@ static VkDescriptorType desc_type(int d) {
 // Stage interfaces. Vulkan requires every input location of a stage to be declared as an output of the stage before it (VUID-RuntimeSpirv-OpEntryPoint-08743);
 // the translator writes each stage apart, so a stage may read locations the one before never declares. Xenoblade Chronicles 3's passthrough geometry shaders
 // (written out as ordinary ones, forwarding all 16 attributes) follow vertex shaders with two outputs, and Adreno refused those pipelines (VK_ERROR_UNKNOWN).
-// The earlier stage then gets a variant that declares the missing vec4 outputs and leaves them unwritten: the values are undefined, as on the Switch.
+// The earlier stage then gets a variant that declares the missing vec4 outputs and leaves them unwritten; a vertex shader's variant then stores (0, 0, 0, 1) to them
+// as to its own outputs (spv_vs_init), the values Maxwell gives unwritten outputs, where Vulkan leaves them undefined.
 static int spv_is_vec4(const uint32_t *w, uint32_t fn, uint32_t t) {   // a vec4 of 32-bit floats, or an array of them (per-vertex inputs)
     for (int depth = 0; depth < 3; depth++) { uint32_t i = 5, found = 0;
         while (i < fn) { uint32_t n = w[i] >> 16; if (!n) return 0; if (w[i + 1] == t && ((w[i] & 0xffff) == 23 || (w[i] & 0xffff) == 28 || (w[i] & 0xffff) == 32)) { found = i; break; } i += n; }
@@ -408,7 +409,8 @@ VkShaderModule vk_shader_module(vkshader_t *s, uint64_t um, uint64_t im, uint32_
     uint16_t bind[64]; uint8_t kind[64]; int nb = 0;
     for (int i = 0; i < s->nbind && i < 64; i++) if ((um | im) >> i & 1) { bind[nb] = s->b[i].binding; kind[nb++] = um >> i & 1 ? 1 : 2; }
     uint32_t nw = s->nspv, *w = nb ? spv_int_images(s->spv, s->nspv, bind, kind, nb, &nw) : NULL; VkShaderModule m = s->mod;
-    if (xo && (w || !nb)) { uint32_t n2 = 0, *w2 = spv_add_outputs(w ? w : s->spv, nw, xo, &n2); free(w); w = w2; nw = n2; }
+    if (xo && (w || !nb)) { uint32_t n2 = 0, *w2 = spv_add_outputs(w ? w : s->spv, nw, xo, &n2); free(w); w = w2; nw = n2;
+        if (w && s->stage == 0) { uint32_t n3 = 0, *w3 = spv_vs_init(w, nw, &n3); if (w3) { free(w); w = w3; nw = n3; } } }   // the added outputs start as (0, 0, 0, 1) too
     if (fd && (w || !(nb || xo))) { uint32_t n2 = 0, *w2 = spv_frag_depth(w ? w : s->spv, nw, &n2); free(w); w = w2; nw = n2; }
     if (dual && (w || !(nb || xo || fd))) { uint32_t n2 = 0, *w2 = spv_dual(w ? w : s->spv, nw, &n2); free(w); w = w2; nw = n2; }
     if (w) { VkShaderModuleCreateInfo ci = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0, (size_t)nw * 4, w};
