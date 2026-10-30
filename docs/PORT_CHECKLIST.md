@@ -1,6 +1,6 @@
 # Port checklist
 
-Games with no official Android version, from the games nxnative tested on Mac or iPhone (2026-10-29) and our own ports. A checked game has an `android.tsv` here; which ones play and how well: [PORT_STATUS.md](PORT_STATUS.md).
+Games with no official Android version, from the games nxnative tested on Mac or iPhone (2026-10-29) and our own ports. A checked game has an `android.tsv` here; which ones play and how well: the README's [Games](../README.md#games).
 
 Left out because they have an official Android release: Unpacking (ported here anyway), Balatro, Raging Loop, Baba Is You, BALL x PIT, Blasphemous, FINAL FANTASY CRYSTAL CHRONICLES Remastered Edition, Ghost Trick: Phantom Detective, Sea of Stars, Stardew Valley, and Absolum (Android on 2026-11-05).
 
