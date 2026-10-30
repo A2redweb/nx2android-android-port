@@ -33,6 +33,7 @@ class Options:
     experimental: bool = False         # a game not ported to Android yet: a provisional profile from upstream's survey (or a copy of its iOS profile), status experimental
     package: str = ''                  # the app's package instead of the profile's (a test install beside another build of the game)
     fps60: bool = False                # 60 fps: the profile's own frame-rate cap, else the build's FPSLocker-Warehouse config (porter/fpslocker.py)
+    vercode_offset: int = 0            # added to the APK's versionCode: a rebuild of the same game version installs over a build with a higher one (version_code)
     jobs: int = field(default_factory=lambda: os.cpu_count() or 8)
 
 
@@ -41,8 +42,15 @@ def app_stem(g, name):   # the file name of the APK and the data pack: the profi
     return ipa[:-4] if ipa.endswith('.ipa') else ipa
 
 
-def version_code(ver):   # the APK's versionCode: the Switch version number (v196608 → 196609), so an update of the game installs over the base game's port
-    return nsp.vnum(ver) + 1
+VERCODE_OFFSET_MAX = 65535   # Switch versions are 65536 apart (v65536, v131072): a rebuild of one, offset by this much at most, stays below the next one's port
+
+
+def version_code(ver, offset=0):
+    """The APK's versionCode: the Switch version number (v196608 → 196609), so an update of the game installs over the base game's port. Android installs an APK over one
+    with the same versionCode, never over a higher one (INSTALL_FAILED_VERSION_DOWNGRADE): offset (porter port --vercode-offset) lifts a rebuild above a build already on
+    the device (an earlier rebuild with an offset, a port of a later version) and keeps its saves, where an uninstall deletes them"""
+    if not 0 <= offset <= VERCODE_OFFSET_MAX: raise BuildError(f'the versionCode offset must be 0 to {VERCODE_OFFSET_MAX} (the next game version\'s port must stay above it): {offset}')
+    return nsp.vnum(ver) + 1 + offset
 
 
 def inspect(folder, keys=None):
@@ -85,6 +93,7 @@ class Port:
         o = self.o
         o.folder = Path(o.folder).expanduser().resolve()
         if not o.folder.is_dir(): raise BuildError(f'not a folder: {o.folder}')
+        version_code('v0', o.vercode_offset)   # an offset out of range fails now, not after the shaders
         keys = o.keys or self.cfg.get('keys')
         if not keys: raise BuildError('no prod.keys: give -k / --keys, or set it once with `porter config keys <path>`')
         o.keys = Path(keys).expanduser().resolve()
@@ -452,8 +461,10 @@ class Port:
         stem = app_stem(self.g, self.app_name)
         self.apk_path = self.o.out / f'{stem}.apk'; self.o.out.mkdir(parents=True, exist_ok=True)
         icon = self.icon()
+        code = version_code(self.pkg_ver, self.o.vercode_offset)
+        if self.o.vercode_offset: say(f'versionCode {code} ({self.pkg_ver} + 1 + offset {self.o.vercode_offset})')
         nsp.run([PY, DM / 'android/apk/mkapk.py', self.so, self.apk_path, paths.signing_key(), '--package', self.package, '--label', self.app_name, '--lib', 'dmhost',
-                 '--version-code', str(version_code(self.pkg_ver)), '--version-name', self.display]
+                 '--version-code', str(code), '--version-name', self.display]
                 + (['--landscape'] if self.ap.landscape else []) + (['--icon', icon] if icon else []) + self.theme() + ([] if self.o.debug else ['--release']),
                 self.logs / 'android_apk.log', env=self.env)
         self.result['apk'] = str(self.apk_path)
