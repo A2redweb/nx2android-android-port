@@ -111,6 +111,44 @@ static void spv_io_locs(const uint32_t *w, uint32_t nw, uint32_t *in, uint32_t *
                 j += m; } }
         i += n; }
 }
+// A vertex shader's outputs start as (0, 0, 0, 1), as on Maxwell: the translator stores only the components the shader writes and Vulkan leaves the rest
+// undefined (dmsh_build.py vs_init does the same for the Apple chain, found on Link's Awakening's lighting). Pokémon Legends: Arceus's deferred lighting draws
+// with vertex shader 1327af7c2b78070e, which writes out0.xy only, and its pixel shaders divide by in0.w: every lit pixel was wrong (a washed-out picture,
+// dark hair and cloth turned white). Each vec4 output with a Location gets that value stored at the entry point's start. NULL when the module is not as expected
+static uint32_t *spv_vs_init(const uint32_t *w, uint32_t nw, uint32_t *onw) {
+    uint32_t bound = w[3], fn = 0, ep = 0, f32 = 0, v4 = 0, c0 = 0, c1 = 0; uint8_t *ptr = calloc(bound, 1), *loc = calloc(bound, 1); uint32_t vars[32], nv = 0;
+    for (uint32_t i = 5; i < nw;) { uint32_t n = w[i] >> 16, op = w[i] & 0xffff; if (!n || i + n > nw) goto fail;
+        if (op == 54) { fn = i; break; }
+        if (op == 15 && n >= 3 && w[i + 1] == 0) ep = w[i + 2];   // OpEntryPoint Vertex
+        if (op == 22 && n == 3 && w[i + 2] == 32) f32 = w[i + 1];
+        if (op == 23 && n == 4 && w[i + 2] == f32 && w[i + 3] == 4 && f32) v4 = w[i + 1];
+        if (op == 32 && n == 4 && w[i + 2] == 3 && v4 && w[i + 3] == v4 && w[i + 1] < bound) ptr[w[i + 1]] = 1;   // OpTypePointer Output vec4
+        if (op == 43 && n == 4 && w[i + 1] == f32 && f32) { if (w[i + 3] == 0) c0 = w[i + 2]; else if (w[i + 3] == 0x3f800000) c1 = w[i + 2]; }
+        if (op == 71 && n == 4 && w[i + 2] == 30 && w[i + 1] < bound) loc[w[i + 1]] = 1;   // Location
+        i += n; }
+    if (!fn || !ep || !v4) goto fail;
+    for (uint32_t i = 5; i < fn;) { uint32_t n = w[i] >> 16; if ((w[i] & 0xffff) == 59 && n >= 4 && w[i + 3] == 3 && w[i + 1] < bound && ptr[w[i + 1]] && w[i + 2] < bound && loc[w[i + 2]] && nv < 32) vars[nv++] = w[i + 2]; i += n; }
+    if (!nv) goto fail;
+    uint32_t at = 0;   // the entry point's first block, after its OpVariables
+    for (uint32_t i = fn; i < nw;) { uint32_t n = w[i] >> 16, op = w[i] & 0xffff; if (!n) goto fail;
+        if (op == 54 && w[i + 2] == ep) { uint32_t j = i + n; while (j < nw && (w[j] & 0xffff) != 248) j += w[j] >> 16; j += 2;
+            while (j < nw && ((w[j] & 0xffff) == 59 || (w[j] & 0xffff) == 8 || (w[j] & 0xffff) == 317)) j += w[j] >> 16; at = j; break; }
+        i += n; }
+    if (!at || at >= nw) goto fail;
+    uint32_t dec[16], nd = 0, id = bound;
+    if (!c0) { c0 = id++; dec[nd++] = 4u << 16 | 43; dec[nd++] = f32; dec[nd++] = c0; dec[nd++] = 0; }
+    if (!c1) { c1 = id++; dec[nd++] = 4u << 16 | 43; dec[nd++] = f32; dec[nd++] = c1; dec[nd++] = 0x3f800000; }
+    uint32_t cv = id++; dec[nd++] = 7u << 16 | 44; dec[nd++] = v4; dec[nd++] = cv; dec[nd++] = c0; dec[nd++] = c0; dec[nd++] = c0; dec[nd++] = c1;   // OpConstantComposite
+    uint32_t *o = malloc(((size_t)nw + nd + 3 * nv) * 4), no = 0;
+    memcpy(o, w, (size_t)fn * 4); no = fn; o[3] = id;
+    memcpy(&o[no], dec, nd * 4); no += nd;
+    memcpy(&o[no], &w[fn], (size_t)(at - fn) * 4); no += at - fn;
+    for (uint32_t k = 0; k < nv; k++) { o[no++] = 3u << 16 | 62; o[no++] = vars[k]; o[no++] = cv; }   // OpStore
+    memcpy(&o[no], &w[at], (size_t)(nw - at) * 4); no += nw - at;
+    free(ptr); free(loc); *onw = no; return o;
+fail:
+    free(ptr); free(loc); return NULL;
+}
 static uint32_t *spv_add_outputs(const uint32_t *w, uint32_t nw, uint32_t mask, uint32_t *onw) {
     uint32_t fn = nw, ep = 0, lastdec = 0, bound = w[3], f32 = 0, v4 = 0, pv4 = 0;
     for (uint32_t i = 5; i < nw;) { uint32_t n = w[i] >> 16, op = w[i] & 0xffff; if (!n) return NULL; if (op == 54) { fn = i; break; }
@@ -200,6 +238,7 @@ vkshader_t *vk_shader(uint64_t key, int stage) {
                        (op == 10 && !memcmp(&w[i + 1], "SPV_EXT_fragment_shader_interlock", 33));
             if (drop) i += n; else for (uint32_t k = 0; k < n; k++) w[o++] = w[i++]; }
         nw = o; } }
+    if (stage == 0) { uint32_t n2 = 0, *w2 = spv_vs_init(w, nw, &n2); if (w2) { free(w); w = w2; nw = n2; } }
     spv_io_locs(w, nw, &s->in_locs, &s->out_locs);
     VkShaderModuleCreateInfo ci = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0, (size_t)nw * 4, w};
     VkResult vr = vkCreateShaderModule(V.dev, &ci, NULL, &s->mod); s->spv = w; s->nspv = nw;
