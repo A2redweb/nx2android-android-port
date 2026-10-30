@@ -1211,7 +1211,7 @@ def split_shaders(py, repo, roms, mains, pkg, env, logs, g, provisional=False, o
     if key and pkg.is_dir() and (note := reused(kf, key)) is not None:
         PROG.end(f'{note}, reused (inputs unchanged)'); return package_key(pkg)
     if oodle:   # the packs are decoded by the game's own Oodle in the Mac host (dm/host/hle_oodle.c)
-        PROG.set(step='building the Mac host for the game\'s Oodle decoder'); env = dict(env, **oodle())
+        PROG.set(step="setting up the game's Oodle decoder"); env = dict(env, **oodle())
     if aoc: env = dict(env, DM_SPLIT_AOC=str(aoc))
     PROG.set(step='splitting')
     tmp = pkg.with_name(pkg.name + '.partial'); rmtree(tmp); (tmp / 'tables').mkdir(parents=True)
