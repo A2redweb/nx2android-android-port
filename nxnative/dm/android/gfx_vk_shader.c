@@ -336,26 +336,48 @@ static VkShaderModule alt_module(vkshader_t *s) {
         if (vkCreateShaderModule(V.dev, &ci, NULL, &m)) m = s->mod; else VKLOG("shader %016llx: alternative code from %s", (unsigned long long)s->key, path); }
     free(w); fclose(f); return m;
 }
+// A fragment shader's dual-source variant (gfx_vk_exec.c pkey dual): its output at location 1 becomes location 0, index 1, the second source of target 0's blend.
+// NULL when it has no output at location 1, or outputs past it (one dual-source attachment at most: maxFragmentDualSrcAttachments)
+static uint32_t *spv_dual(const uint32_t *w, uint32_t nw, uint32_t *onw) {
+    uint32_t bound = w[3], fn = nw, at = 0, v1 = 0; uint8_t *out = calloc(bound, 1); int past = 0;
+    for (uint32_t i = 5; i < nw;) { uint32_t n = w[i] >> 16, op = w[i] & 0xffff; if (!n || i + n > nw) { free(out); return NULL; }
+        if (op == 54) { fn = i; break; }
+        if (op == 59 && n >= 4 && w[i + 3] == 3 && w[i + 2] < bound) out[w[i + 2]] = 1;   // OpVariable ... Output
+        i += n; }
+    for (uint32_t i = 5; i < fn;) { uint32_t n = w[i] >> 16, op = w[i] & 0xffff;
+        if (op == 71 && n == 4 && w[i + 2] == 30 && w[i + 1] < bound && out[w[i + 1]]) { if (w[i + 3] == 1) { at = i; v1 = w[i + 1]; } else if (w[i + 3] > 1) past = 1; }   // Location
+        if (op == 71 && n == 4 && w[i + 2] == 32) past = 1;   // an Index already: not a shader this is for
+        i += n; }
+    free(out);
+    if (!at || past) return NULL;
+    uint32_t *o = malloc(((size_t)nw + 4) * 4); memcpy(o, w, (size_t)(at + 4) * 4); o[at + 3] = 0;   // Location 1 → 0
+    o[at + 4] = 4u << 16 | 71; o[at + 5] = v1; o[at + 6] = 32; o[at + 7] = 1;   // OpDecorate ... Index 1
+    memcpy(&o[at + 8], &w[at + 4], (size_t)(nw - at - 4) * 4); *onw = nw + 4;
+    return o;
+}
 VkShaderModule vk_shader_module(vkshader_t *s, uint64_t um, uint64_t im, uint32_t xo, int fd) {
+    int dual = fd >> 1 & 1; fd &= 1;   // fd bit 1: the dual-source variant
     if (fd && (s->stage != 1 || s->depth_repl)) fd = 0;
-    if (!(um | im | xo | (uint32_t)fd) || !s->spv) return s->mod;
+    if (dual && s->stage != 1) dual = 0;
+    if (!(um | im | xo | (uint32_t)fd | (uint32_t)dual) || !s->spv) return s->mod;
     if (xo == 1u << 31) {   // DM_VK_SPV_ALT
         pthread_mutex_lock(&g_sh_mu); for (int i = 0; i < s->nvar; i++) if (s->var[i].um == 0 && s->var[i].im == 0 && s->var[i].xo == xo) { VkShaderModule m = s->var[i].mod; pthread_mutex_unlock(&g_sh_mu); return m; }
         VkShaderModule m = alt_module(s); if (s->nvar < 8) s->var[s->nvar++] = (typeof(s->var[0])){0, 0, xo, 0, m}; pthread_mutex_unlock(&g_sh_mu); return m; }
     xo &= ~(1u << 31);
     pthread_mutex_lock(&g_sh_mu);
-    for (int i = 0; i < s->nvar; i++) if (s->var[i].um == um && s->var[i].im == im && s->var[i].xo == xo && s->var[i].fd == fd) { VkShaderModule m = s->var[i].mod; pthread_mutex_unlock(&g_sh_mu); return m; }
+    for (int i = 0; i < s->nvar; i++) if (s->var[i].um == um && s->var[i].im == im && s->var[i].xo == xo && s->var[i].fd == (fd | dual << 1)) { VkShaderModule m = s->var[i].mod; pthread_mutex_unlock(&g_sh_mu); return m; }
     uint16_t bind[64]; uint8_t kind[64]; int nb = 0;
     for (int i = 0; i < s->nbind && i < 64; i++) if ((um | im) >> i & 1) { bind[nb] = s->b[i].binding; kind[nb++] = um >> i & 1 ? 1 : 2; }
     uint32_t nw = s->nspv, *w = nb ? spv_int_images(s->spv, s->nspv, bind, kind, nb, &nw) : NULL; VkShaderModule m = s->mod;
     if (xo && (w || !nb)) { uint32_t n2 = 0, *w2 = spv_add_outputs(w ? w : s->spv, nw, xo, &n2); free(w); w = w2; nw = n2; }
     if (fd && (w || !(nb || xo))) { uint32_t n2 = 0, *w2 = spv_frag_depth(w ? w : s->spv, nw, &n2); free(w); w = w2; nw = n2; }
+    if (dual && (w || !(nb || xo || fd))) { uint32_t n2 = 0, *w2 = spv_dual(w ? w : s->spv, nw, &n2); free(w); w = w2; nw = n2; }
     if (w) { VkShaderModuleCreateInfo ci = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0, (size_t)nw * 4, w};
-        if (vkCreateShaderModule(V.dev, &ci, NULL, &m)) { m = s->mod; VKLOG("[RED] shader %016llx: its variant was refused (bindings %#llx / %#llx, outputs %#x, fragment depth %d)", (unsigned long long)s->key, (unsigned long long)um, (unsigned long long)im, xo, fd); }
-        else VKLOG("shader %016llx: variant for bindings %#llx (uint texels) %#llx (int texels), outputs added %#x, fragment depth written %d", (unsigned long long)s->key, (unsigned long long)um, (unsigned long long)im, xo, fd);
+        if (vkCreateShaderModule(V.dev, &ci, NULL, &m)) { m = s->mod; VKLOG("[RED] shader %016llx: its variant was refused (bindings %#llx / %#llx, outputs %#x, fragment depth %d, dual source %d)", (unsigned long long)s->key, (unsigned long long)um, (unsigned long long)im, xo, fd, dual); }
+        else VKLOG("shader %016llx: variant for bindings %#llx (uint texels) %#llx (int texels), outputs added %#x, fragment depth written %d, dual source %d", (unsigned long long)s->key, (unsigned long long)um, (unsigned long long)im, xo, fd, dual);
         free(w); }
-    else VKLOG("[RED] shader %016llx: no variant could be made (bindings %#llx / %#llx, outputs %#x, fragment depth %d)", (unsigned long long)s->key, (unsigned long long)um, (unsigned long long)im, xo, fd);
-    if (s->nvar < 8) s->var[s->nvar++] = (typeof(s->var[0])){um, im, xo, fd, m};
+    else VKLOG("[RED] shader %016llx: no variant could be made (bindings %#llx / %#llx, outputs %#x, fragment depth %d, dual source %d)", (unsigned long long)s->key, (unsigned long long)um, (unsigned long long)im, xo, fd, dual);
+    if (s->nvar < 8) s->var[s->nvar++] = (typeof(s->var[0])){um, im, xo, fd | dual << 1, m};
     pthread_mutex_unlock(&g_sh_mu);
     return m;
 }

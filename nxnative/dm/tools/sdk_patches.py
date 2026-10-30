@@ -166,4 +166,13 @@ CUTS = {
     (0x14fbf0, '08fca752', '087ca052', 'AddressRegionManager constructor: node area limit mov w8,#0x3fe00000 → mov w8,#0x3e00000'),
     (0x14fc5c, '09fca752', '097ca052', 'AddressRegionManager constructor: length of the node area registered as an occupied region mov w9,#0x3fe00000 → mov w9,#0x3e00000'),
   ],
+  # Pokémon Legends: Arceus 1.1.1 (v262144) sdk (SDK 11.4.0, Kirby and the Forgotten Land's build, which has no virtual address memory and never makes an address region; offsets from
+  # upstream's Arceus port): nninitStartup (main+0x2779d8c) initializes StandardAllocator over 32 GB of virtual address memory, which the host caps to what the alias region holds (4.06 GB).
+  # That fits the 4.375 GB alias region only after a 62 MB node area and with 32 MB alignment: VammManager::AllocateAddressRegion's placement (sdk+0x34e1d8) aligns regions of 1 GB and
+  # more to 1 GB, and without the cuts StandardAllocator::Initialize (sdk+0x2f98e4) reached Break at sdk+0x39fb54 upstream
+  'b39add63421be525d352e576dab438d3': [
+    (0x34e048, '08fca752', '087ca052', 'AddressRegionManager constructor: node area limit mov w8,#0x3fe00000 → mov w8,#0x3e00000'),
+    (0x34e0e4, '09fca752', '097ca052', 'AddressRegionManager constructor: length of the node area registered as an occupied region mov w9,#0x3fe00000 → mov w9,#0x3e00000'),
+    (0x34e244, '0a00a852', '0a40a052', 'AllocateAddressRegion: alignment of regions of 1 GB and more mov w10,#0x40000000 → mov w10,#0x2000000 (32 MB, as from 32 MB up)'),
+  ],
 }
