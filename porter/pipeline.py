@@ -45,9 +45,10 @@ def version_code(ver):   # the APK's versionCode: the Switch version number (v19
     return nsp.vnum(ver) + 1
 
 
-def inspect(folder):
-    """What a game folder holds, without extracting anything: the GUI's game card and `porter inspect`"""
-    app, fam = nsp.scan_nsps(Path(folder), dumps.EXTS)
+def inspect(folder, keys=None):
+    """What a game folder holds, without extracting anything: the GUI's game card and `porter inspect`. keys: prod.keys (default: the configured one), which reads the title ID
+    of a dump with neither a ticket nor a [title ID] tag (an untagged cartridge dump) from its NCA headers"""
+    app, fam = nsp.scan_nsps(Path(folder), dumps.EXTS, keys or config.load().get('keys'))
     g, ap = profiles.by_title(app)
     files = [fam['base'], *(p for _, p in fam['updates']), *(p for _, _, p in fam['dlc'])]
     info = dict(title_id=f'{app:016X}', base=fam['base'].name, updates=[{'version': f'v{v}' if v is not None else None, 'file': p.name} for v, p in fam['updates']],
@@ -121,7 +122,7 @@ class Port:
     def inputs(self):
         o = self.o
         say(f'game folder: {o.folder}')
-        self.app, self.fam = nsp.scan_nsps(o.folder, dumps.EXTS)
+        self.app, self.fam = nsp.scan_nsps(o.folder, dumps.EXTS, o.keys)
         tid = f'{self.app:016X}'
         self.work = o.folder / f'{tid}_build'
         g, ap = profiles.by_title(self.app)

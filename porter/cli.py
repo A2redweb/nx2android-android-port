@@ -9,6 +9,7 @@ def _parser():
     d = sub.add_parser('doctor', help='check the tools a port needs'); d.add_argument('--json', action='store_true'); d.add_argument('-k', '--keys')
     p = sub.add_parser('profiles', help='list the games the tool can port'); p.add_argument('--all', action='store_true', help='also the iOS profiles not ported to Android'); p.add_argument('--json', action='store_true')
     i = sub.add_parser('inspect', help='what a game folder holds and whether it can be ported'); i.add_argument('folder'); i.add_argument('--json', action='store_true')
+    i.add_argument('-k', '--keys', help='prod.keys (default: the configured one): reads the title ID of a dump with no [title ID] in its name')
     po = sub.add_parser('port', help='make the APK and the data pack (and install them)')
     po.add_argument('folder', help='the game\'s folder: its base game NSP / XCI / NSZ / XCZ, updates and DLC')
     po.add_argument('-k', '--keys', help='prod.keys (default: the configured one)')
@@ -59,7 +60,7 @@ def cmd_profiles(a):
 def cmd_inspect(a):
     from porter import pipeline
     from porter.upstream import BuildError
-    try: info = pipeline.inspect(a.folder)
+    try: info = pipeline.inspect(a.folder, a.keys)
     except BuildError as e:
         if a.json: _print_json({'error': str(e)})
         else: print(e, file=sys.stderr)
