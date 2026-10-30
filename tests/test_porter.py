@@ -177,6 +177,22 @@ class Misc(unittest.TestCase):
         self.assertLess(pipeline.version_code('v0'), pipeline.version_code('v65536'))
         self.assertEqual(pipeline.version_code('v196608'), 196609)
 
+    def test_version_code_offset(self):   # a rebuild lifted above an earlier one, still below the next game version's port
+        self.assertEqual(pipeline.version_code('v589824', 1), 589826)
+        self.assertLess(pipeline.version_code('v65536', pipeline.VERCODE_OFFSET_MAX), pipeline.version_code('v131072'))
+        for bad in (-1, pipeline.VERCODE_OFFSET_MAX + 1):
+            with self.assertRaises(pipeline.BuildError): pipeline.version_code('v65536', bad)
+
+    def test_install_downgrade_names_the_offset(self):   # a refused downgrade says what is installed and how to lift the rebuild above it
+        from porter.adb import Adb, AdbError
+        a = Adb('adb')
+        def run(*x, **_):
+            if x[0] == 'install': raise AdbError('adb install: Failure [INSTALL_FAILED_VERSION_DOWNGRADE: Downgrade detected: Update version code 589825 is older than current 589826]')
+            return '    versionCode=589826 minSdk=29 targetSdk=34\n'
+        a.run = run
+        with self.assertRaises(AdbError) as e: a.install('x.apk', 'org.nx2a.test')
+        self.assertIn('(589826)', str(e.exception)); self.assertIn('--vercode-offset', str(e.exception))
+
     def test_app_stem(self):
         self.assertEqual(pipeline.app_stem(game.load(NEO), 'NEO'), 'NeoTheWorldEndsWithYou')
 
