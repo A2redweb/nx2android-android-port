@@ -239,33 +239,6 @@ vkshader_t *vk_shader(uint64_t key, int stage) {
                        (op == 10 && !memcmp(&w[i + 1], "SPV_EXT_fragment_shader_interlock", 33));
             if (drop) i += n; else for (uint32_t k = 0; k < n; k++) w[o++] = w[i++]; }
         nw = o; } }
-    // The translator declares storage images without a format (Unknown: the host reads and writes any format) but not the capabilities that requires: a module that
-    // reads or writes such an image gets OpCapability StorageImageReadWithoutFormat / StorageImageWriteWithoutFormat (the device features are on when the device
-    // has them, gfx_vk_core.c). Without them the module is invalid and Adreno's compiler was free to do anything with the image: Paper Mario: The Thousand-Year
-    // Door's full-screen lighting compute shader 9ac755e24cc64570 writes one this way
-    { uint32_t bound = w[3]; uint8_t *unk = calloc(bound, 1), *ptr = calloc(bound, 1); int rd = 0, wr = 0, have_r = 0, have_w = 0;
-      for (uint32_t i = 5; i < nw;) { uint32_t n = w[i] >> 16, op = w[i] & 0xffff; if (!n || i + n > nw) break;
-          if (op == 17 && n == 2) { if (w[i + 1] == 55) have_r = 1; if (w[i + 1] == 56) have_w = 1; }
-          if (op == 25 && n >= 9 && w[i + 1] < bound && w[i + 7] == 2 && w[i + 8] == 0) unk[w[i + 1]] = 1;   // OpTypeImage, Sampled 2 (storage), format Unknown
-          i += n; }
-      // an image value of such a type: OpLoad of a variable of a pointer to it, followed through the pointer and variable ids (one level, as the translator emits them)
-      for (uint32_t i = 5; i < nw;) { uint32_t n = w[i] >> 16, op = w[i] & 0xffff; if (!n || i + n > nw) break;
-          if (op == 32 && n == 4 && w[i + 1] < bound && w[i + 3] < bound && unk[w[i + 3]]) ptr[w[i + 1]] = 1;   // OpTypePointer
-          if (op == 59 && n >= 4 && w[i + 2] < bound && w[i + 1] < bound && (ptr[w[i + 1]] || unk[w[i + 1]])) ptr[w[i + 2]] = 2;   // OpVariable of it (also arrays: see below)
-          if (op == 28 && n == 4 && w[i + 1] < bound && w[i + 2] < bound && unk[w[i + 2]]) unk[w[i + 1]] = 1;   // OpTypeArray of it
-          if (op == 29 && n == 3 && w[i + 1] < bound && w[i + 2] < bound && unk[w[i + 2]]) unk[w[i + 1]] = 1;   // OpTypeRuntimeArray
-          if (op == 61 && n >= 4 && w[i + 3] < bound && w[i + 2] < bound && ptr[w[i + 3]] == 2) ptr[w[i + 2]] = 3;   // OpLoad of such a variable
-          if (op == 65 && n >= 4 && w[i + 3] < bound && w[i + 2] < bound && ptr[w[i + 3]] == 2) ptr[w[i + 2]] = 2;   // OpAccessChain into an array of them
-          if (op == 98 && n >= 4 && w[i + 3] < bound && ptr[w[i + 3]] == 3) rd = 1;    // OpImageRead
-          if (op == 99 && n >= 4 && w[i + 1] < bound && ptr[w[i + 1]] == 3) wr = 1;    // OpImageWrite
-          i += n; }
-      free(unk); free(ptr);
-      int add = (rd && !have_r) + (wr && !have_w);
-      if (add) { uint32_t *o2 = malloc(((size_t)nw + 2 * add) * 4); memcpy(o2, w, 20); uint32_t k = 5;
-          if (rd && !have_r) { o2[k++] = 2u << 16 | 17; o2[k++] = 55; }
-          if (wr && !have_w) { o2[k++] = 2u << 16 | 17; o2[k++] = 56; }
-          memcpy(&o2[k], &w[5], (size_t)(nw - 5) * 4); free(w); w = o2; nw += 2 * add;
-          static int said; if (said++ < 8) VKLOG("shader %016llx: storage images without a format: capability added for%s%s", (unsigned long long)key, rd && !have_r ? " reads" : "", wr && !have_w ? " writes" : ""); } }
     if (stage == 0) { uint32_t n2 = 0, *w2 = spv_vs_init(w, nw, &n2); if (w2) { free(w); w = w2; nw = n2; } }
     spv_io_locs(w, nw, &s->in_locs, &s->out_locs);
     VkShaderModuleCreateInfo ci = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0, (size_t)nw * 4, w};
