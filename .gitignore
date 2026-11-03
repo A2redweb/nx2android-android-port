@@ -4,3 +4,4 @@ build/
 .gradle/
 local.properties
 *.jks
+__pycache__/
