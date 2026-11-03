@@ -1,0 +1,96 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>nx2android</title>
+<style>
+:root{--bg:#0d0d10;--card:#17171c;--line:#2a2a33;--fg:#ececf1;--mut:#9a9aa8;--red:#e5383b;--ok:#3ecf8e}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif}
+header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}header b.t{font-weight:700}header b.t i{color:var(--red);font-style:normal}header span{color:var(--mut);font-size:12px;flex:1}
+header button{background:#2a2a33;color:var(--fg);border:0;border-radius:8px;padding:7px 10px;font:inherit;font-size:13px}
+#ban{display:none;background:#3a1517;border-bottom:1px solid var(--red);padding:10px 16px;font-size:14px}#ban button{margin-left:8px;background:var(--red);color:#fff;border:0;border-radius:8px;padding:6px 10px;font:inherit}
+nav{display:flex;border-bottom:1px solid var(--line)}nav button{flex:1;padding:12px;background:none;border:0;color:var(--mut);font:inherit;border-bottom:2px solid transparent}
+nav button.on{color:var(--fg);border-color:var(--red)}main{padding:14px;max-width:720px;margin:auto}section{display:none}section.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+label{display:block;color:var(--mut);font-size:13px;margin:8px 0 4px}input[type=text],input[type=number]{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:#101014;color:var(--fg);font:inherit}
+.row{display:flex;gap:8px}.row>*{flex:1}.chk{display:flex;align-items:center;gap:8px;margin:8px 0}
+button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);color:#fff;font:inherit;font-weight:600;margin-top:8px}button.g{background:#2a2a33}
+.ck{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}.ck:last-child{border:0}.dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex:none}.ok{background:var(--ok)}.no{background:var(--red)}.opt{background:#777}
+.sm{color:var(--mut);font-size:12px;word-break:break-all}pre{background:#08080a;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:46vh;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-all}
+.bar{height:8px;background:#101014;border-radius:6px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--red);width:0}
+#modal{position:fixed;inset:0;background:#000c;display:none;padding:14px;overflow:auto}#modal .card{max-width:720px;margin:auto}.li{padding:10px;border-bottom:1px solid var(--line)}
+</style></head><body>
+<header><b class="t"><i>nx2</i>android</b><span id="ver"></span><button id="quit" onclick="quit()" style="display:none">Quit</button></header>
+<div id="ban">An update is ready. <button onclick="restart()">Restart to apply</button></div>
+<nav><button class="on" data-t="setup">Setup</button><button data-t="port">Port</button><button data-t="device">Device</button><button data-t="log">Log</button></nav>
+<main>
+<section id="setup" class="on">
+ <div class="card"><div id="checks" class="sm">checking…</div><div class="row"><button class="b g" onclick="doctor()">Re-check</button><button class="b" onclick="tools()">Download missing tools</button></div>
+ <div class="sm" style="margin-top:8px">First time: the build tools are about 1.5 GB. Keep 6 GB free plus twice the size of each game.</div></div>
+ <div class="card"><label>prod.keys path (from your own Switch)</label><div class="row"><input type="text" id="keys" placeholder="/sdcard/switch/prod.keys"><button class="b g" style="flex:none" onclick="pick('keys',false)">Browse</button></div>
+ <label>Output folder (default /sdcard/Switch/Ports)</label><div class="row"><input type="text" id="outcfg" placeholder="/sdcard/Switch/Ports"><button class="b g" style="flex:none" onclick="pick('outcfg',true)">Browse</button></div>
+ <button class="b" onclick="saveCfg()">Save settings</button><div class="sm" id="cfgmsg"></div></div>
+</section>
+<section id="port">
+ <div class="card"><label>Game folder (base game, update and DLC: NSP / XCI / NSZ / XCZ)</label><div class="row"><input type="text" id="folder" placeholder="/sdcard/Switch/Games/MyGame"><button class="b g" style="flex:none" onclick="pick('folder',true)">Browse</button></div>
+ <button class="b g" onclick="inspect()">Inspect</button><div id="insp" class="sm" style="margin-top:8px"></div></div>
+ <div class="card"><label>App name (optional)</label><input type="text" id="app_name">
+ <label>Package (optional, default unknownnone.nx2android.&lt;game&gt;)</label><input type="text" id="package">
+ <div class="chk"><input type="checkbox" id="touch"><span>Touch game (gamepad hidden)</span></div>
+ <div class="chk"><input type="checkbox" id="fps60"><span>60 fps</span></div>
+ <div class="chk"><input type="checkbox" id="experimental"><span>Experimental (game not ported yet, may not start)</span></div>
+ <div class="chk"><input type="checkbox" id="install"><span>Install with adb when done (needs the Device tab)</span></div>
+ <div class="chk"><input type="checkbox" id="replace_signer"><span>Replace an app signed with another key (deletes its saves)</span></div>
+ <label>Build jobs (lower uses less RAM)</label><input type="number" id="jobs" value="3" min="1" max="8">
+ <button class="b" onclick="port()">Port</button></div>
+ <div class="card" id="fin"><b>Finish</b><div class="sm">Install the APK, then copy the game data.</div>
+ <label>APK</label><input type="text" id="apkpath" placeholder="/sdcard/Switch/Ports/Game.apk">
+ <label>Data folder</label><input type="text" id="datapath" placeholder="/sdcard/Switch/Ports/Game-data">
+ <div class="row"><button class="b g" onclick="installApk()">Install APK</button><button class="b" onclick="copyData()">Copy data</button></div></div>
+</section>
+<section id="device">
+ <div class="card"><div class="sm">Optional. Only needed for "Install with adb" or if copying data is blocked on your Android. Settings → Developer options → Wireless debugging → Pair device with pairing code.</div>
+ <label>Pairing host:port</label><input type="text" id="phost" placeholder="localhost:37000"><label>Pairing code</label><input type="text" id="pcode"><button class="b g" onclick="adb('pair')">Pair</button>
+ <label>Connect host:port</label><input type="text" id="chost" placeholder="localhost:38000"><button class="b" onclick="adb('connect')">Connect</button>
+ <button class="b g" onclick="devs()">List devices</button><pre id="adbout" style="margin-top:10px"></pre></div>
+</section>
+<section id="log"><div class="card"><div id="stage" class="sm">idle</div><div class="bar"><i id="pb"></i></div>
+ <div class="row"><button class="b g" onclick="cancel()">Cancel</button></div></div><pre id="out"></pre></section>
+</main>
+<div id="modal"><div class="card"><div id="mpath" class="sm"></div><div id="mlist"></div><div class="row"><button class="b" id="msel">Use this folder</button><button class="b g" onclick="modal.style.display='none'">Close</button></div></div></div>
+<script>
+const $=id=>document.getElementById(id),modal=$('modal');let since=0,timer=null;
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>tab(b.dataset.t));
+function tab(t){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==t));document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id==t))}
+async function api(p,o){const r=await fetch(p,o?{method:'POST',body:JSON.stringify(o)}:{});return r.json()}
+if(window.NX2A)$('quit').style.display='';
+function quit(){if(window.NX2A)NX2A.quit()}
+async function status(){try{const s=await api('/api/status');$('ver').textContent='payload '+s.version;$('ban').style.display=s.update_ready?'block':'none'}catch(e){}}
+async function restart(){await api('/api/restart',{});$('ban').textContent='Restarting…';const w=setInterval(async()=>{try{await api('/api/status');clearInterval(w);location.reload()}catch(e){}},1500)}
+async function doctor(){const d=await api('/api/doctor');if(d.error){$('checks').textContent=d.error;return}
+ $('checks').innerHTML=d.checks.map(c=>`<div class="ck"><span class="dot ${c.ok?'ok':c.required?'no':'opt'}"></span><div><b>${c.name}</b><div class="sm">${c.detail}${c.fix&&!c.ok?'<br>→ '+c.fix:''}</div></div></div>`).join('')}
+async function loadCfg(){const c=await api('/api/config');$('keys').value=c.keys||'';$('outcfg').value=c.out||''}
+async function saveCfg(){const a=await api('/api/config',{key:'keys',value:$('keys').value});const b=await api('/api/config',{key:'out',value:$('outcfg').value});$('cfgmsg').textContent=(a.ok&&b.ok)?'saved':(a.msg||b.msg);doctor()}
+async function tools(){await api('/api/tools',{});tab('log');poll(true)}
+async function inspect(){$('insp').textContent='reading…';const r=await api('/api/inspect',{folder:$('folder').value});$('insp').textContent=JSON.stringify(r,null,1).slice(0,1500)}
+async function port(){const o={folder:$('folder').value,app_name:$('app_name').value,package:$('package').value,jobs:$('jobs').value};['touch','fps60','experimental','install','replace_signer'].forEach(k=>o[k]=$(k).checked);
+ const r=await api('/api/port',o);if(!r.started)alert('A job is already running');tab('log');poll(true)}
+function installApk(){const p=$('apkpath').value;if(!p)return alert('Port a game first, or type the APK path');if(window.NX2A)NX2A.installApk(p);else alert('Open the APK from your file manager: '+p)}
+async function copyData(){const d=$('datapath').value;if(!d)return alert('Port a game first, or type the data folder path');await api('/api/copydata',{data:d});tab('log');poll(true)}
+async function cancel(){await api('/api/cancel',{})}
+async function adb(op){const host=op=='pair'?$('phost').value:$('chost').value;const r=await api('/api/adb',{op,host,code:$('pcode').value});$('adbout').textContent=r.out}
+async function devs(){const r=await api('/api/devices');$('adbout').textContent=JSON.stringify(r.devices||r.error,null,1)}
+function poll(reset){if(reset){since=0;$('out').textContent='';$('pb').style.width='0'}clearInterval(timer);timer=setInterval(tick,1000);tick()}
+async function tick(){const r=await api('/api/job?since='+since);since=r.next;
+ for(const ln of r.lines){let ev=null;try{ev=JSON.parse(ln)}catch(e){}
+  if(ev&&typeof ev=='object'&&ev.ev){
+   if(ev.ev=='stage')$('stage').textContent='Stage '+ev.k+'/'+ev.n+': '+ev.name;
+   else if(ev.ev=='progress'&&ev.frac!=null)$('pb').style.width=Math.min(100,100*ev.frac)+'%';
+   else if(ev.ev=='stage_end'){$('out').textContent+=(ev.ok?'✓ ':'✗ ')+ev.name+(ev.summary?' — '+ev.summary:'')+'\n';$('pb').style.width='0'}
+   else if(ev.ev=='result'){$('apkpath').value=ev.apk||'';$('datapath').value=ev.data||'';$('out').textContent+='Done: '+ev.apk+'\n'+ev.data+'\nPackage: '+ev.package+'\n'}
+  }else $('out').textContent+=ln+'\n'}
+ $('out').scrollTop=1e9;if(r.done){clearInterval(timer);$('stage').textContent=(r.code===0?'finished':'stopped (exit '+r.code+')')}}
+async function pick(id,dir,path){path=path||($(id).value&&dir?$(id).value:'/sdcard');const r=await api('/api/ls?path='+encodeURIComponent(path));
+ $('mpath').textContent=r.path+(r.error?' — '+r.error:'');$('mlist').innerHTML=`<div class="li" data-up="${r.parent}">⬆ ..</div>`+r.items.map(i=>`<div class="li" data-p="${r.path.replace(/\/$/,'')}/${i.n}" data-d="${i.d}">${i.d?'📁':'📄'} ${i.n}</div>`).join('');
+ $('mlist').querySelector('[data-up]').onclick=e=>pick(id,dir,e.target.dataset.up);
+ $('mlist').querySelectorAll('[data-p]').forEach(e=>e.onclick=()=>{if(e.dataset.d=='true')pick(id,dir,e.dataset.p);else if(!dir){$(id).value=e.dataset.p;modal.style.display='none'}});
+ $('msel').style.display=dir?'':'none';$('msel').onclick=()=>{$(id).value=r.path;modal.style.display='none'};modal.style.display='block'}
+doctor();loadCfg();status();setInterval(status,60000);
+</script></body></html>
