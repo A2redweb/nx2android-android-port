@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""nx2android phone GUI: a local web app (stdlib only) that drives `python -m porter`. Only the app itself can use it: a random token, a Host check and a same-site cookie guard every request."""
+import hmac, http.cookies, json, os, re, signal, subprocess, sys, threading, time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlparse, parse_qs
+
+HERE = Path(__file__).parent
+REPO = Path(os.environ.get('NX2A_REPO', Path.home() / 'nx2android'))
+PORT = int(os.environ.get('NX2A_PORT', '7331'))
+TOKEN = os.environ.get('NX2A_TOKEN', '')
+VERSION = os.environ.get('NX2A_VERSION', '0')
+HOSTS = {f'127.0.0.1:{PORT}', f'localhost:{PORT}'}
+ENV = {k: v for k, v in os.environ.items() if k != 'NX2A_TOKEN'}
+ENV.update(PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8', DOTNET_EnableWriteXorExecute='0', DOTNET_SYSTEM_GLOBALIZATION_INVARIANT='1')
+CFG = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config') / 'nx2android' / 'config.json'
+GAMES = Path(os.environ.get('NX2A_GAMES', '/root/games'))
+OTA = Path(os.environ.get('NX2A_OTA', '/root/ota'))
+STATUS = Path(os.environ.get('NX2A_STATUS', '/root/patch_status.txt'))
+DEFAULT_OUT = '/sdcard/Switch/Ports'
+GAME_EXT = ('.nsp', '.xci', '.nsz', '.xcz')
+JOB = {'p': None, 'lines': [], 'done': True, 'code': None}
+LOCK = threading.Lock()
+
+
+def cfg():
+    try: return json.loads(CFG.read_text())
+    except (OSError, ValueError): return {}
+
+
+def porter(*args, timeout=120):
+    r = subprocess.run([sys.executable, '-m', 'porter', *args], cwd=REPO, env=ENV, capture_output=True, text=True, timeout=timeout)
+    return r.stdout, r.stderr, r.returncode
+
+
+def start_job(argv):
+    with LOCK:
+        if JOB['p'] and JOB['p'].poll() is None: return False
+        JOB.update(lines=[], done=False, code=None)
+        p = subprocess.Popen(argv, cwd=REPO, env=ENV, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace', start_new_session=True)
+        JOB['p'] = p
+
+    def pump():
+        for ln in p.stdout: JOB['lines'].append(ln.rstrip('\n'))
+        JOB['code'] = p.wait(); JOB['done'] = True
+    threading.Thread(target=pump, daemon=True).start()
+    return True
+
+
+def stage_folder(folder):
+    """The porter builds next to the game folder and /sdcard cannot run programs: link the game files into internal storage."""
+    p = Path(folder)
+    if not str(p).startswith(('/sdcard', '/storage')): return str(p)
+    slug = re.sub(r'[^A-Za-z0-9._-]+', '_', p.name) or 'game'
+    d = GAMES / slug; d.mkdir(parents=True, exist_ok=True)
+    for f in p.iterdir():
+        if f.suffix.lower() in GAME_EXT:
+            t = d / f.name
+            if t.is_symlink() or t.exists(): t.unlink()
+            t.symlink_to(f)
+    return str(d)
+
+
+def build_port_args(o):
+    a = ['port', stage_folder(o['folder']), '--progress', 'json']
+    out = o.get('out') or ('' if cfg().get('out') else DEFAULT_OUT)
+    if out: a += ['-o', out]
+    if o.get('app_name'): a += ['--app-name', o['app_name']]
+    if o.get('language'): a += ['-l', o['language']]
+    if o.get('package'): a += ['--package', o['package']]
+    for flag in ('touch', 'fps60', 'experimental', 'install', 'replace_signer'):
+        if o.get(flag): a.append('--' + flag.replace('_', '-'))
+    if o.get('jobs'): a += ['--jobs', str(max(1, int(o['jobs'])))]
+    return a
+
+
+def ver(d):
+    try: return int(json.loads((d / 'payload.json').read_text())['version'])
+    except Exception: return -1
+
+
+class H(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+
+    def send(self, body, ctype='application/json', code=200, headers=None):
+        b = body if isinstance(body, bytes) else body.encode()
+        self.send_response(code); self.send_header('Content-Type', ctype + '; charset=utf-8'); self.send_header('Content-Length', str(len(b)))
+        self.send_header('Cache-Control', 'no-store')
+        for k, v in (headers or {}).items(): self.send_header(k, v)
+        self.end_headers(); self.wfile.write(b)
+
+    def j(self, obj, code=200): self.send(json.dumps(obj), code=code)
+
+    def gate(self, path, q, post=False):
+        if self.headers.get('Host', '') not in HOSTS: self.send('bad host', 'text/plain', 403); return False
+        origin = self.headers.get('Origin')
+        if post and origin and urlparse(origin).netloc not in HOSTS: self.send('bad origin', 'text/plain', 403); return False
+        if not TOKEN: return True
+        try:
+            ck = http.cookies.SimpleCookie(self.headers.get('Cookie', ''))
+            if 'nx2a' in ck and hmac.compare_digest(ck['nx2a'].value, TOKEN): return True
+            if path == '/' and hmac.compare_digest(q.get('t', [''])[0], TOKEN): self.set_cookie = True; return True
+        except (TypeError, http.cookies.CookieError): pass
+        self.send('forbidden', 'text/plain', 403); return False
+
+    def do_GET(self):
+        u = urlparse(self.path); q = parse_qs(u.query)
+        self.set_cookie = False
+        if not self.gate(u.path, q): return
+        if u.path == '/':
+            return self.send((HERE / 'index.html').read_bytes(), 'text/html', headers={'Set-Cookie': f'nx2a={TOKEN}; Path=/; HttpOnly; SameSite=Strict'} if self.set_cookie else None)
+        if u.path == '/api/status':
+            try: pat = STATUS.read_text()[-400:]
+            except OSError: pat = ''
+            return self.j({'version': VERSION, 'ota': ver(OTA), 'update_ready': ver(OTA) > int(VERSION or 0), 'patches': pat})
+        if u.path == '/api/doctor':
+            out, err, code = porter('doctor', '--json')
+            try: return self.j({'checks': json.loads(out)})
+            except ValueError: return self.j({'error': (err or out)[-600:]})
+        if u.path == '/api/config': return self.j(cfg())
+        if u.path == '/api/job':
+            since = int(q.get('since', ['0'])[0])
+            return self.j({'lines': JOB['lines'][since:], 'next': len(JOB['lines']), 'done': JOB['done'], 'code': JOB['code']})
+        if u.path == '/api/ls':
+            p = Path(q.get('path', ['/sdcard'])[0])
+            try:
+                items = sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+                return self.j({'path': str(p), 'parent': str(p.parent), 'items': [{'n': x.name, 'd': x.is_dir()} for x in items if not x.name.startswith('.')][:500]})
+            except OSError as e: return self.j({'path': str(p), 'parent': str(p.parent), 'items': [], 'error': str(e)})
+        if u.path == '/api/devices':
+            out, err, _ = porter('devices', '--json')
+            try: return self.j({'devices': json.loads(out)})
+            except ValueError: return self.j({'devices': [], 'error': (err or out)[-300:]})
+        self.send('not found', 'text/plain', 404)
+
+    def do_POST(self):
+        u = urlparse(self.path); q = {}
+        if not self.gate(u.path, q, post=True): return
+        n = int(self.headers.get('Content-Length') or 0)
+        try: o = json.loads(self.rfile.read(n) or b'{}')
+        except ValueError: return self.j({'error': 'bad json'}, 400)
+        if u.path == '/api/config':
+            if o.get('key') not in ('keys', 'out'): return self.j({'ok': False, 'msg': 'unknown setting'})
+            out, err, c = porter('config', o['key'], o['value']); return self.j({'ok': c == 0, 'msg': (err or out)[-300:]})
+        if u.path == '/api/tools': return self.j({'started': start_job([sys.executable, '-m', 'porter', 'tools', '--download', '--progress', 'json'])})
+        if u.path == '/api/inspect':
+            out, err, c = porter('inspect', stage_folder(o['folder']), '--json')
+            try: return self.j(json.loads(out))
+            except ValueError: return self.j({'error': (err or out)[-600:]})
+        if u.path == '/api/port': return self.j({'started': start_job([sys.executable, '-m', 'porter', *build_port_args(o)])})
+        if u.path == '/api/copydata': return self.j({'started': start_job([sys.executable, str(HERE / 'copydata.py'), o['data']])})
+        if u.path == '/api/install':
+            a = ['install', o['data'], '--progress', 'json'] + (['--replace-signer'] if o.get('replace_signer') else [])
+            return self.j({'started': start_job([sys.executable, '-m', 'porter', *a])})
+        if u.path == '/api/adb':   # wireless debugging to this same phone (optional)
+            if o.get('op') not in ('pair', 'connect', 'disconnect'): return self.j({'out': 'bad operation'})
+            cmd = ['adb', o['op'], str(o['host'])] + ([str(o['code'])] if o['op'] == 'pair' and o.get('code') else [])
+            try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=ENV); return self.j({'out': (r.stdout + r.stderr).strip()})
+            except (OSError, subprocess.TimeoutExpired) as e: return self.j({'out': str(e)})
+        if u.path == '/api/cancel':
+            p = JOB['p']
+            if p and p.poll() is None: os.killpg(p.pid, signal.SIGKILL)
+            return self.j({'ok': True})
+        if u.path == '/api/restart':
+            threading.Timer(0.5, lambda: os._exit(75)).start(); return self.j({'ok': True})
+        self.send('not found', 'text/plain', 404)
+
+
+if __name__ == '__main__':
+    print(f'nx2android GUI {VERSION} on 127.0.0.1:{PORT} (porter: {REPO})', flush=True)
+    ThreadingHTTPServer(('127.0.0.1', PORT), H).serve_forever()
