@@ -52,11 +52,11 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
  <button class="b g" onclick="devs()">List devices</button><pre id="adbout" style="margin-top:10px"></pre></div>
 </section>
 <section id="log"><div class="card"><div id="stage" class="sm">idle</div><div class="bar"><i id="pb"></i></div>
- <div class="row"><button class="b g" onclick="cancel()">Cancel</button></div></div><pre id="out"></pre></section>
+ <div class="row"><button class="b g" onclick="cancel()">Cancel</button><button class="b g" onclick="copyLog()">Copy log</button></div></div><pre id="out"></pre></section>
 </main>
 <div id="modal"><div class="card"><div id="mpath" class="sm"></div><div id="mlist"></div><div class="row"><button class="b" id="msel">Use this folder</button><button class="b g" onclick="modal.style.display='none'">Close</button></div></div></div>
 <script>
-const $=id=>document.getElementById(id),modal=$('modal');let since=0,timer=null;
+const $=id=>document.getElementById(id),modal=$('modal');let since=0,timer=null,raw=[];
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>tab(b.dataset.t));
 function tab(t){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==t));document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id==t))}
 async function api(p,o){const r=await fetch(p,o?{method:'POST',body:JSON.stringify(o)}:{});return r.json()}
@@ -77,16 +77,18 @@ async function copyData(){const d=$('datapath').value;if(!d)return alert('Port a
 async function cancel(){await api('/api/cancel',{})}
 async function adb(op){const host=op=='pair'?$('phost').value:$('chost').value;const r=await api('/api/adb',{op,host,code:$('pcode').value});$('adbout').textContent=r.out}
 async function devs(){const r=await api('/api/devices');$('adbout').textContent=JSON.stringify(r.devices||r.error,null,1)}
-function poll(reset){if(reset){since=0;$('out').textContent='';$('pb').style.width='0'}clearInterval(timer);timer=setInterval(tick,1000);tick()}
+function poll(reset){if(reset){since=0;raw=[];$('out').textContent='';$('pb').style.width='0'}clearInterval(timer);timer=setInterval(tick,1000);tick()}
 async function tick(){const r=await api('/api/job?since='+since);since=r.next;
- for(const ln of r.lines){let ev=null;try{ev=JSON.parse(ln)}catch(e){}
+ for(const ln of r.lines){raw.push(ln);let ev=null;try{ev=JSON.parse(ln)}catch(e){}
   if(ev&&typeof ev=='object'&&ev.ev){
    if(ev.ev=='stage')$('stage').textContent='Stage '+ev.k+'/'+ev.n+': '+ev.name;
    else if(ev.ev=='progress'&&ev.frac!=null)$('pb').style.width=Math.min(100,100*ev.frac)+'%';
    else if(ev.ev=='stage_end'){$('out').textContent+=(ev.ok?'✓ ':'✗ ')+ev.name+(ev.summary?' — '+ev.summary:'')+'\n';$('pb').style.width='0'}
    else if(ev.ev=='result'){$('apkpath').value=ev.apk||'';$('datapath').value=ev.data||'';$('out').textContent+='Done: '+ev.apk+'\n'+ev.data+'\nPackage: '+ev.package+'\n'}
   }else $('out').textContent+=ln+'\n'}
- $('out').scrollTop=1e9;if(r.done){clearInterval(timer);$('stage').textContent=(r.code===0?'finished':'stopped (exit '+r.code+')')}}
+ $('out').scrollTop=1e9;if(r.done){clearInterval(timer);$('stage').textContent=(r.code===0?'finished':'stopped (exit '+r.code+')');if(r.code!==0)details()}}
+async function details(){try{const d=await api('/api/lastlog');if(d.file){const t='--- '+d.file+' (last lines)\n'+d.tail+'\n';raw.push(t);$('out').textContent+='\n'+t;$('out').scrollTop=1e9}}catch(e){}}
+function copyLog(){const t=raw.join('\n');(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).catch(()=>{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()});$('stage').textContent+=' · log copied'}
 async function pick(id,dir,path){path=path||($(id).value&&dir?$(id).value:'/sdcard');const r=await api('/api/ls?path='+encodeURIComponent(path));
  $('mpath').textContent=r.path+(r.error?' — '+r.error:'');$('mlist').innerHTML=`<div class="li" data-up="${r.parent}">⬆ ..</div>`+r.items.map(i=>`<div class="li" data-p="${r.path.replace(/\/$/,'')}/${i.n}" data-d="${i.d}">${i.d?'📁':'📄'} ${i.n}</div>`).join('');
  $('mlist').querySelector('[data-up]').onclick=e=>pick(id,dir,e.target.dataset.up);

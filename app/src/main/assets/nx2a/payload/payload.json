@@ -1,12 +1,13 @@
 {
- "version": 3,
- "setup": 1,
+ "version": 5,
+ "setup": 3,
  "porter_sha": "8e030b41caa05b109d497f486cea5f4abd1c7d73",
  "files": {
   "apply_patches.py": "17e9a4ce92dd15d9ea848784f6201354892c27b2d24580a03702170a442ca158",
   "copydata.py": "e29d0b6f5d2e2411008670409842f2318e0208c1935c9935201eca5ab661a60f",
-  "inner_setup.sh": "ad486781d8848dd14c887168f962253aacea5eddd9c3b2bf479bc9364b373381",
-  "webgui/index.html": "05edeb181c4aaf6efb2055fe134c3b888667652ff000a5899c4d1f50520085be",
-  "webgui/server.py": "b2b4b37f67c7a53096b184c932cf906c0bb7042d2634e97da25ea2a4ce555778"
+  "fast_tools.py": "665af40effe497d679cef624e0a0da81874900aa43e9fbfef07d172d7cc32070",
+  "inner_setup.sh": "413d6980c1c0c129e90cb1892351dfc7a504b6a3919f78091703e4aba54cdd8c",
+  "webgui/index.html": "3c304b4f3b49c2f379eb76fef876b539965cc5e95885dd5133629632c1118805",
+  "webgui/server.py": "a297e587a9b714a52143750b2ee3cfbae34659a7cf3c40f264989d4e253740d9"
  }
 }
