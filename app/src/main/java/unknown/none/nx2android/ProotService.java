@@ -213,9 +213,11 @@ public class ProotService extends Service {
                 lib + "/libproot.so", "--kill-on-exit", "--link2symlink", "-0",
                 "-r", root.getAbsolutePath(), "-w", "/root",
                 "-b", "/dev", "-b", "/proc", "-b", "/sys", "-b", "/dev/urandom:/dev/random", "-b", sd + ":/sdcard",
-                "-b", fp + "/stat:/proc/stat", "-b", fp + "/loadavg:/proc/loadavg", "-b", fp + "/uptime:/proc/uptime",
-                "-b", fp + "/version:/proc/version", "-b", fp + "/vmstat:/proc/vmstat",
-                "--kernel-release=5.1.1-nx2a",
+                "--kernel-release=5.1.1-nx2a"));
+        for (String n : new String[]{"stat", "loadavg", "uptime", "version", "vmstat"}) {
+            if (!readable("/proc/" + n)) { c.add("-b"); c.add(fp + "/" + n + ":/proc/" + n); }
+        }
+        c.addAll(Arrays.asList(
                 "/usr/bin/env", "-i", "HOME=/root", "PATH=/root/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
                 "TERM=xterm", "LANG=C.UTF-8", "TMPDIR=/tmp", "DEBIAN_FRONTEND=noninteractive",
                 "DOTNET_EnableWriteXorExecute=0", "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1"));
@@ -228,6 +230,11 @@ public class ProotService extends Service {
         env.put("PROOT_TMP_DIR", new File(getFilesDir(), "ptmp").getAbsolutePath());
         env.put("LD_LIBRARY_PATH", lib);
         return b;
+    }
+
+    /** True when this app may read the file; Android hides some /proc files from apps, and only those get a stand-in. */
+    private static boolean readable(String path) {
+        try (InputStream in = new java.io.FileInputStream(path)) { return in.read() >= -1; } catch (Exception e) { return false; }
     }
 
     private int runLogged(ProcessBuilder b) throws IOException, InterruptedException {
