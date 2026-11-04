@@ -22,7 +22,7 @@ if [ $rc -eq 0 ]; then say "signing: using the stored release key"
 elif [ $rc -eq 2 ]; then
   say "signing: no stored key yet, creating one"
   if make_key; then
-    gh release create signing-key --draft --target "$GITHUB_SHA" --title "signing-key (private: the app's release key)" \
+    gh release create signing-key -R "$REPO" --draft --target "$GITHUB_SHA" --title "signing-key (private: the app's release key)" \
       --notes "Created by the build. Keep it: an app signed with another key cannot update this one." nx2android-release.p12 pass.txt >>"$LOG" 2>&1 \
       && say "signing: key created and stored" || say "signing: WARNING the key could not be stored; this build uses a one-off key"
   else say "signing: WARNING key creation failed"; fi
