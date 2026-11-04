@@ -63,7 +63,7 @@ function tab(t){document.querySelectorAll('nav button').forEach(b=>b.classList.t
 async function api(p,o){const r=await fetch(p,o?{method:'POST',body:JSON.stringify(o)}:{});return r.json()}
 if(window.NX2A)$('quit').style.display='';
 function quit(){if(window.NX2A)NX2A.quit()}
-async function testDotnet(){const o=$('dnout');o.style.display='block';o.textContent='testing .NET (a minute at most)…';const r=await api('/api/dotnet',{});o.textContent=r.report.join('\n')}
+async function testDotnet(){const o=$('dnout');o.style.display='block';o.textContent='testing .NET (a minute at most); tap the result to copy it…';const r=await api('/api/dotnet',{});o.textContent=r.report.join('\n');o.onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(o.textContent);o.dataset.copied=1}}
 async function repair(){$('pstat').textContent='repairing…';const r=await api('/api/repair',{});$('pstat').textContent='porter: '+r.porter+' — '+r.msg}
 async function status(){try{const s=await api('/api/status');$('pstat').textContent='porter: '+s.porter;$('ver').textContent='payload '+s.version;$('ban').style.display=s.update_ready?'block':'none'}catch(e){}}
 async function restart(){await api('/api/restart',{});$('ban').textContent='Restarting…';const w=setInterval(async()=>{try{await api('/api/status');clearInterval(w);location.reload()}catch(e){}},1500)}
