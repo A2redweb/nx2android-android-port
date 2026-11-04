@@ -76,7 +76,12 @@ def start_job(argv, kind=''):
                     elif ev.get('ev') == 'progress' and ev.get('frac') is not None: JOB['frac'] = ev['frac']
                 elif ln.strip(): JOB['stage'] = ln.strip()[:70]
             except ValueError: pass
-        JOB['code'] = p.wait(); JOB['done'] = True
+        JOB['code'] = p.wait()
+        if JOB['kind'] == 'tools' and JOB['code'] == 0:     # check right away that .NET starts on this phone
+            try:
+                JOB['lines'].append('.NET check:'); JOB['lines'].extend('  ' + l for l in dotnet_probe.tune())
+            except Exception as e: JOB['lines'].append(f'.NET check failed: {e}')
+        JOB['done'] = True
     threading.Thread(target=pump, daemon=True).start()
     return True
 
@@ -211,7 +216,10 @@ class H(BaseHTTPRequestHandler):
             if p and p.poll() is None: os.killpg(p.pid, signal.SIGKILL)
             return self.j({'ok': True})
         if u.path == '/api/dotnet':
-            return self.j({'report': dotnet_probe.tune(force=True), 'saved': dotnet_probe.saved()})
+            rep = dotnet_probe.full_report()
+            try: Path('/sdcard/Switch').mkdir(parents=True, exist_ok=True); Path('/sdcard/Switch/nx2android-dotnet-report.txt').write_text('\n'.join(rep))
+            except OSError: pass
+            return self.j({'report': rep, 'saved': dotnet_probe.saved()})
         if u.path == '/api/repair':
             ok, msg = porter_sync.sync(force=True); return self.j({'ok': ok, 'msg': msg, 'porter': porter_sync.state()})
         if u.path == '/api/restart':
