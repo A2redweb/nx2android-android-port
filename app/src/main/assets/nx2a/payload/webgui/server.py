@@ -6,6 +6,8 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 HERE = Path(__file__).parent
+sys.path.insert(0, str(HERE.parent))
+import porter_sync   # noqa: E402
 REPO = Path(os.environ.get('NX2A_REPO', Path.home() / 'nx2android'))
 PORT = int(os.environ.get('NX2A_PORT', '7331'))
 TOKEN = os.environ.get('NX2A_TOKEN', '')
@@ -19,7 +21,7 @@ OTA = Path(os.environ.get('NX2A_OTA', '/root/ota'))
 STATUS = Path(os.environ.get('NX2A_STATUS', '/root/patch_status.txt'))
 DEFAULT_OUT = '/sdcard/Switch/Ports'
 GAME_EXT = ('.nsp', '.xci', '.nsz', '.xcz')
-JOB = {'p': None, 'lines': [], 'done': True, 'code': None}
+JOB = {'p': None, 'lines': [], 'done': True, 'code': None, 'kind': '', 'stage': '', 'frac': None, 'seq': 0}
 LOCK = threading.Lock()
 
 
@@ -28,20 +30,36 @@ def cfg():
     except (OSError, ValueError): return {}
 
 
+def need_porter():
+    try:
+        if not porter_sync.complete(): porter_sync.sync()
+    except Exception as e: print('porter sync failed:', e, flush=True)
+
+
 def porter(*args, timeout=120):
+    need_porter()
     r = subprocess.run([sys.executable, '-m', 'porter', *args], cwd=REPO, env=ENV, capture_output=True, text=True, timeout=timeout)
     return r.stdout, r.stderr, r.returncode
 
 
-def start_job(argv):
+def start_job(argv, kind=''):
+    if kind in ('port', 'tools', 'install'): need_porter()
     with LOCK:
         if JOB['p'] and JOB['p'].poll() is None: return False
-        JOB.update(lines=[], done=False, code=None)
+        JOB.update(lines=[], done=False, code=None, kind=kind, stage='', frac=None, seq=JOB['seq'] + 1)
         p = subprocess.Popen(argv, cwd=REPO, env=ENV, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace', start_new_session=True)
         JOB['p'] = p
 
     def pump():
-        for ln in p.stdout: JOB['lines'].append(ln.rstrip('\n'))
+        for ln in p.stdout:
+            ln = ln.rstrip('\n'); JOB['lines'].append(ln)
+            try:
+                if ln.startswith('{'):
+                    ev = json.loads(ln)
+                    if ev.get('ev') == 'stage': JOB['stage'] = f"{ev.get('k')}/{ev.get('n')} {ev.get('name')}"; JOB['frac'] = None
+                    elif ev.get('ev') == 'progress' and ev.get('frac') is not None: JOB['frac'] = ev['frac']
+                elif ln.strip(): JOB['stage'] = ln.strip()[:70]
+            except ValueError: pass
         JOB['code'] = p.wait(); JOB['done'] = True
     threading.Thread(target=pump, daemon=True).start()
     return True
@@ -125,13 +143,14 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/status':
             try: pat = STATUS.read_text()[-400:]
             except OSError: pat = ''
-            return self.j({'version': VERSION, 'ota': ver(OTA), 'update_ready': ver(OTA) > int(VERSION or 0), 'patches': pat})
+            return self.j({'version': VERSION, 'ota': ver(OTA), 'update_ready': ver(OTA) > int(VERSION or 0), 'patches': pat, 'porter': porter_sync.state()})
         if u.path == '/api/doctor':
             out, err, code = porter('doctor', '--json')
             try: return self.j({'checks': json.loads(out)})
             except ValueError: return self.j({'error': (err or out)[-600:]})
         if u.path == '/api/config': return self.j(cfg())
         if u.path == '/api/lastlog': return self.j(last_build_log())
+        if u.path == '/api/summary': return self.j({'running': not JOB['done'], 'kind': JOB['kind'], 'stage': JOB['stage'], 'frac': JOB['frac'], 'code': JOB['code'], 'seq': JOB['seq']})
         if u.path == '/api/job':
             since = int(q.get('since', ['0'])[0])
             return self.j({'lines': JOB['lines'][since:], 'next': len(JOB['lines']), 'done': JOB['done'], 'code': JOB['code']})
@@ -156,16 +175,16 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/config':
             if o.get('key') not in ('keys', 'out'): return self.j({'ok': False, 'msg': 'unknown setting'})
             out, err, c = porter('config', o['key'], o['value']); return self.j({'ok': c == 0, 'msg': (err or out)[-300:]})
-        if u.path == '/api/tools': return self.j({'started': start_job([sys.executable, str(HERE.parent / 'fast_tools.py')])})
+        if u.path == '/api/tools': return self.j({'started': start_job([sys.executable, str(HERE.parent / 'fast_tools.py')], 'tools')})
         if u.path == '/api/inspect':
             out, err, c = porter('inspect', stage_folder(o['folder']), '--json')
             try: return self.j(json.loads(out))
             except ValueError: return self.j({'error': (err or out)[-600:]})
-        if u.path == '/api/port': return self.j({'started': start_job([sys.executable, '-m', 'porter', *build_port_args(o)])})
-        if u.path == '/api/copydata': return self.j({'started': start_job([sys.executable, str(HERE / 'copydata.py'), o['data']])})
+        if u.path == '/api/port': return self.j({'started': start_job([sys.executable, '-m', 'porter', *build_port_args(o)], 'port')})
+        if u.path == '/api/copydata': return self.j({'started': start_job([sys.executable, str(HERE / 'copydata.py'), o['data']], 'copy')})
         if u.path == '/api/install':
             a = ['install', o['data'], '--progress', 'json'] + (['--replace-signer'] if o.get('replace_signer') else [])
-            return self.j({'started': start_job([sys.executable, '-m', 'porter', *a])})
+            return self.j({'started': start_job([sys.executable, '-m', 'porter', *a], 'install')})
         if u.path == '/api/adb':   # wireless debugging to this same phone (optional)
             if o.get('op') not in ('pair', 'connect', 'disconnect'): return self.j({'out': 'bad operation'})
             cmd = ['adb', o['op'], str(o['host'])] + ([str(o['code'])] if o['op'] == 'pair' and o.get('code') else [])
@@ -175,11 +194,14 @@ class H(BaseHTTPRequestHandler):
             p = JOB['p']
             if p and p.poll() is None: os.killpg(p.pid, signal.SIGKILL)
             return self.j({'ok': True})
+        if u.path == '/api/repair':
+            ok, msg = porter_sync.sync(force=True); return self.j({'ok': ok, 'msg': msg, 'porter': porter_sync.state()})
         if u.path == '/api/restart':
             threading.Timer(0.5, lambda: os._exit(75)).start(); return self.j({'ok': True})
         self.send('not found', 'text/plain', 404)
 
 
 if __name__ == '__main__':
+    need_porter()
     print(f'nx2android GUI {VERSION} on 127.0.0.1:{PORT} (porter: {REPO})', flush=True)
     ThreadingHTTPServer(('127.0.0.1', PORT), H).serve_forever()

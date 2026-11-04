@@ -1,5 +1,5 @@
 {
- "version": 5,
+ "version": 7,
  "setup": 3,
  "porter_sha": "8e030b41caa05b109d497f486cea5f4abd1c7d73",
  "files": {
@@ -7,7 +7,8 @@
   "copydata.py": "e29d0b6f5d2e2411008670409842f2318e0208c1935c9935201eca5ab661a60f",
   "fast_tools.py": "665af40effe497d679cef624e0a0da81874900aa43e9fbfef07d172d7cc32070",
   "inner_setup.sh": "413d6980c1c0c129e90cb1892351dfc7a504b6a3919f78091703e4aba54cdd8c",
-  "webgui/index.html": "3c304b4f3b49c2f379eb76fef876b539965cc5e95885dd5133629632c1118805",
-  "webgui/server.py": "a297e587a9b714a52143750b2ee3cfbae34659a7cf3c40f264989d4e253740d9"
+  "porter_sync.py": "da0355f5b76fd760642dd8999c80c02aaf251f998b14cf00a9b38c6356a37941",
+  "webgui/index.html": "6afe5c53d642e8f0f38c11b59182e6341052ddd7186879af3540fe076afac387",
+  "webgui/server.py": "eb163eb8ee94134131ec01f61c003f1202f9cdb43e57f68a8ba0151fd1810d62"
  }
 }

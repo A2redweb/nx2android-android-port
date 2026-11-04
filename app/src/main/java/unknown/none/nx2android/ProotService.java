@@ -18,6 +18,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import org.json.JSONObject;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -36,6 +39,7 @@ public class ProotService extends Service {
     static volatile boolean ready, failed, running;
     static volatile String token = "";
     private Process server;
+    private boolean wasRunning;
     private PowerManager.WakeLock wl;
 
     static synchronized void log(String s) {
@@ -74,12 +78,73 @@ public class ProotService extends Service {
                 .setSmallIcon(android.R.drawable.stat_sys_download).setContentIntent(pi).setOngoing(true).build();
     }
 
+    /** Updates the ongoing notification (pct below 0 = no bar). */
+    private void show(String text, int pct) {
+        PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), 0);
+        Notification.Builder b = new Notification.Builder(this, "nx2a").setContentTitle("nx2android").setContentText(text)
+                .setSmallIcon(android.R.drawable.stat_sys_download).setContentIntent(pi).setOngoing(true);
+        if (pct >= 0) b.setProgress(100, pct, false);
+        ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).notify(1, b.build());
+    }
+
+    private void notifyDone(String text) {
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        nm.createNotificationChannel(new NotificationChannel("nx2a_done", "Finished tasks", NotificationManager.IMPORTANCE_DEFAULT));
+        PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), 0);
+        nm.notify(2, new Notification.Builder(this, "nx2a_done").setContentTitle("nx2android").setContentText(text)
+                .setSmallIcon(android.R.drawable.stat_sys_download_done).setContentIntent(pi).setAutoCancel(true).build());
+    }
+
+    private static String label(String kind) {
+        switch (kind) {
+            case "port": return "Porting";
+            case "tools": return "Downloading tools";
+            case "copy": return "Copying game data";
+            case "install": return "Installing";
+            default: return "Working";
+        }
+    }
+
+    /** Tasks run inside the service's own process, so they keep going with the app closed. This mirrors them in the notification. */
+    private void watchTasks() {
+        while (running && ready) {
+            try {
+                HttpURLConnection c = (HttpURLConnection) new URL("http://127.0.0.1:" + PORT + "/api/summary").openConnection();
+                c.setRequestProperty("Cookie", "nx2a=" + token);
+                c.setConnectTimeout(1500);
+                c.setReadTimeout(1500);
+                StringBuilder sb = new StringBuilder();
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8))) {
+                    String ln;
+                    while ((ln = r.readLine()) != null) sb.append(ln);
+                }
+                JSONObject o = new JSONObject(sb.toString());
+                String kind = o.optString("kind", "");
+                if (o.optBoolean("running")) {
+                    wasRunning = true;
+                    String stage = o.optString("stage", "");
+                    int pct = o.isNull("frac") ? -1 : (int) (o.optDouble("frac", -1) * 100);
+                    show(label(kind) + (stage.isEmpty() ? "" : ": " + stage), pct);
+                } else {
+                    if (wasRunning) {
+                        wasRunning = false;
+                        int code = o.isNull("code") ? 0 : o.optInt("code", 0);
+                        notifyDone(code == 0 ? label(kind) + " finished" : label(kind) + " stopped (exit " + code + "). Open the app for details.");
+                    }
+                    show("nx2android is ready", -1);
+                }
+            } catch (Exception ignored) { }
+            try { Thread.sleep(2500); } catch (InterruptedException e) { return; }
+        }
+    }
+
     private void work() {
         try {
             File base = getFilesDir(), root = new File(base, "ubuntu"), ok = new File(base, "ubuntu.ok");
             new File(base, "ptmp").mkdirs();
             if (!ok.exists()) {
                 log("First run: unpacking Ubuntu (a minute or two)...");
+                show("Unpacking Ubuntu (first run)", -1);
                 deleteTree(root);
                 root.mkdirs();
                 try (InputStream in = openRootfs()) {
@@ -93,10 +158,14 @@ public class ProotService extends Service {
             File mark = new File(root, "root/.nx2a_setup");
             if (!mark.exists()) {
                 log("Installing the build tools (needs internet, about 10 minutes)...");
+                show("Installing the build tools (first run)", -1);
                 int rc = runLogged(proot("bash /nx2a/payload/inner_setup.sh", null));
                 if (rc != 0 || !mark.exists()) throw new IOException("setup failed (exit " + rc + "). Check your connection, then tap Retry.");
             }
+            show("Starting nx2android", -1);
             startServer();
+            show("nx2android is ready", -1);
+            new Thread(this::watchTasks, "nx2a-watch").start();
         } catch (Throwable t) {
             log("ERROR: " + t);
             failed = true; running = false;
