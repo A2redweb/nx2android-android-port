@@ -17,7 +17,7 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
 .bar{height:8px;background:#101014;border-radius:6px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--red);width:0}
 #modal{position:fixed;inset:0;background:#000c;display:none;padding:14px;overflow:auto}#modal .card{max-width:720px;margin:auto}.li{padding:10px;border-bottom:1px solid var(--line)}
 </style></head><body>
-<header><b class="t"><i>nx2</i>android</b><span id="ver"></span><button id="quit" onclick="quit()" style="display:none">Quit</button></header>
+<header><b class="t"><i>nx2</i>android</b><span id="ver"></span><button onclick="checkUpdate()">Update</button><button id="quit" onclick="quit()" style="display:none">Quit</button></header>
 <div id="ban">An update is ready. <button onclick="restart()">Restart to apply</button></div>
 <nav><button class="on" data-t="setup">Setup</button><button data-t="port">Port</button><button data-t="device">Device</button><button data-t="log">Log</button></nav>
 <main>
@@ -66,6 +66,7 @@ function quit(){if(window.NX2A)NX2A.quit()}
 async function testDotnet(){const o=$('dnout');o.style.display='block';o.textContent='testing .NET (a minute at most); tap the result to copy it…';const r=await api('/api/dotnet',{});o.textContent=r.report.join('\n');o.onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(o.textContent);o.dataset.copied=1}}
 async function repair(){$('pstat').textContent='repairing…';const r=await api('/api/repair',{});$('pstat').textContent='porter: '+r.porter+' — '+r.msg}
 async function status(){try{const s=await api('/api/status');$('pstat').textContent='porter: '+s.porter;$('ver').textContent='payload '+s.version;$('ban').style.display=s.update_ready?'block':'none'}catch(e){}}
+async function checkUpdate(){$('ver').textContent='checking…';try{const r=await api('/api/checkupdate',{});await status();if(!r.ready)$('ver').textContent+=' · up to date'}catch(e){$('ver').textContent='check failed'}}
 async function restart(){await api('/api/restart',{});$('ban').textContent='Restarting…';const w=setInterval(async()=>{try{await api('/api/status');clearInterval(w);location.reload()}catch(e){}},1500)}
 async function doctor(){const d=await api('/api/doctor');if(d.error){$('checks').textContent=d.error;return}
  $('checks').innerHTML=d.checks.map(c=>`<div class="ck"><span class="dot ${c.ok?'ok':c.required?'no':'opt'}"></span><div><b>${c.name}</b><div class="sm">${c.detail}${c.fix&&!c.ok?'<br>→ '+c.fix:''}</div></div></div>`).join('')}

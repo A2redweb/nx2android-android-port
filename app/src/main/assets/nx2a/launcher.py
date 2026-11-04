@@ -100,7 +100,7 @@ def update():
 def updater():
     time.sleep(5)
     while True:
-        update(); time.sleep(1800)
+        update(); time.sleep(300)
 
 
 def main():

@@ -75,14 +75,14 @@ public class ProotService extends Service {
         nm.createNotificationChannel(new NotificationChannel("nx2a", "nx2android", NotificationManager.IMPORTANCE_LOW));
         PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), 0);
         return new Notification.Builder(this, "nx2a").setContentTitle("nx2android").setContentText(text)
-                .setSmallIcon(android.R.drawable.stat_sys_download).setContentIntent(pi).setOngoing(true).build();
+                .setSmallIcon(R.drawable.ic_stat_nx2a).setColor(0xFF2E2BD9).setContentIntent(pi).setOngoing(true).build();
     }
 
     /** Updates the ongoing notification (pct below 0 = no bar). */
     private void show(String text, int pct) {
         PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), 0);
         Notification.Builder b = new Notification.Builder(this, "nx2a").setContentTitle("nx2android").setContentText(text)
-                .setSmallIcon(android.R.drawable.stat_sys_download).setContentIntent(pi).setOngoing(true);
+                .setSmallIcon(R.drawable.ic_stat_nx2a).setColor(0xFF2E2BD9).setContentIntent(pi).setOngoing(true);
         if (pct >= 0) b.setProgress(100, pct, false);
         ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).notify(1, b.build());
     }
@@ -92,7 +92,7 @@ public class ProotService extends Service {
         nm.createNotificationChannel(new NotificationChannel("nx2a_done", "Finished tasks", NotificationManager.IMPORTANCE_DEFAULT));
         PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), 0);
         nm.notify(2, new Notification.Builder(this, "nx2a_done").setContentTitle("nx2android").setContentText(text)
-                .setSmallIcon(android.R.drawable.stat_sys_download_done).setContentIntent(pi).setAutoCancel(true).build());
+                .setSmallIcon(R.drawable.ic_stat_nx2a).setContentIntent(pi).setAutoCancel(true).build());
     }
 
     private static String label(String kind) {
