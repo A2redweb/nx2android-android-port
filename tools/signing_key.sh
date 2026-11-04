@@ -6,7 +6,7 @@ set -uo pipefail
 REPO="$GITHUB_REPOSITORY"; D="${RUNNER_TEMP:-/tmp}/sign"; mkdir -p "$D"; cd "$D"; LOG="$D/signing.log"; : > "$LOG"
 say() { echo "$*" | tee -a "$LOG"; }
 stored() {   # 0 = key downloaded, 2 = no key stored yet, 1 = could not read
-  ID="$(gh api "repos/$REPO/releases?per_page=100" --jq '[.[] | select(.draft==true and .name=="signing-key")][0].id // empty' 2>>"$LOG")" || return 1
+  ID="$(gh api "repos/$REPO/releases?per_page=100" --jq '[.[] | select(.draft==true and (.name | startswith("signing-key")))] | sort_by(.created_at) | .[0].id // empty' 2>>"$LOG")" || return 1
   [ -n "$ID" ] || return 2
   for n in nx2android-release.p12 pass.txt; do
     AID="$(gh api "repos/$REPO/releases/$ID" --jq ".assets[] | select(.name==\"$n\") | .id" 2>>"$LOG")"
