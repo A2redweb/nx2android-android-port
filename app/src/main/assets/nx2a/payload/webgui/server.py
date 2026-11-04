@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """nx2android phone GUI: a local web app (stdlib only) that drives `python -m porter`. Only the app itself can use it: a random token, a Host check and a same-site cookie guard every request."""
-import glob, hmac, http.cookies, json, os, re, signal, subprocess, sys, threading, time
+import contextlib, glob, hmac, http.cookies, io, json, os, re, signal, subprocess, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -37,6 +37,28 @@ def job_env():
     cur = dotnet_probe.saved()
     if cur: e.update(cur)
     return e
+
+
+UPD = {'t': 0, 'msg': 'not checked yet'}
+
+
+def check_update():
+    """Same download-and-verify as the launcher's, so the banner appears without restarting the app."""
+    try:
+        sys.path.insert(0, os.environ.get('NX2A_DIR', '/nx2a'))
+        import launcher
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf): got = launcher.update()
+        UPD.update(t=time.time(), msg=(buf.getvalue().strip().splitlines() or ['up to date'])[-1])
+        return got
+    except Exception as e:
+        UPD.update(t=time.time(), msg=f'update check failed: {e}'); return False
+
+
+def auto_update():
+    time.sleep(20)
+    while True:
+        check_update(); time.sleep(300)
 
 
 def need_dotnet():
@@ -164,7 +186,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/status':
             try: pat = STATUS.read_text()[-400:]
             except OSError: pat = ''
-            return self.j({'version': VERSION, 'ota': ver(OTA), 'update_ready': ver(OTA) > int(VERSION or 0), 'patches': pat, 'porter': porter_sync.state()})
+            return self.j({'version': VERSION, 'ota': ver(OTA), 'update_ready': ver(OTA) > int(VERSION or 0), 'patches': pat, 'porter': porter_sync.state(), 'update_msg': UPD['msg']})
         if u.path == '/api/doctor':
             out, err, code = porter('doctor', '--json')
             try: return self.j({'checks': json.loads(out)})
@@ -215,6 +237,8 @@ class H(BaseHTTPRequestHandler):
             p = JOB['p']
             if p and p.poll() is None: os.killpg(p.pid, signal.SIGKILL)
             return self.j({'ok': True})
+        if u.path == '/api/checkupdate':
+            got = check_update(); return self.j({'ready': got or ver(OTA) > int(VERSION or 0), 'msg': UPD['msg']})
         if u.path == '/api/dotnet':
             rep = dotnet_probe.full_report()
             try: Path('/sdcard/Switch').mkdir(parents=True, exist_ok=True); Path('/sdcard/Switch/nx2android-dotnet-report.txt').write_text('\n'.join(rep))
@@ -229,5 +253,6 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     need_porter()
+    threading.Thread(target=auto_update, daemon=True).start()
     print(f'nx2android GUI {VERSION} on 127.0.0.1:{PORT} (porter: {REPO})', flush=True)
     ThreadingHTTPServer(('127.0.0.1', PORT), H).serve_forever()
