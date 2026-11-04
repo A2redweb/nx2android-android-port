@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Stable boot script (changes rarely). Runs the newest valid payload, keeps it updated from GitHub, rolls back a bad update, and keeps the pinned porter patched."""
-import hashlib, json, os, shutil, subprocess, sys, threading, time, urllib.request
+import hashlib, io, json, os, shutil, subprocess, sys, tarfile, threading, time, urllib.request
 from pathlib import Path
 
 D = Path(os.environ.get('NX2A_DIR', '/nx2a'))
@@ -9,7 +9,6 @@ REPO = Path(os.environ.get('NX2A_REPO', '/root/nx2android'))
 MARK = Path(os.environ.get('NX2A_SETUP_MARK', '/root/.nx2a_setup'))
 STATUS = Path(os.environ.get('NX2A_STATUS', '/root/patch_status.txt'))
 BUNDLED = D / 'payload'
-PORTER_URL = 'https://github.com/shirai91/nx2android.git'
 
 
 def log(*a): print('[launcher]', *a, flush=True)
@@ -47,15 +46,24 @@ def setup_if_needed(P, m):
 def sync_porter(P, m):
     want = m.get('porter_sha')
     if not want: return
-    if not (REPO / '.git').exists():
-        REPO.mkdir(parents=True, exist_ok=True)
-        run(['git', 'init', '-q'], cwd=REPO); run(['git', 'remote', 'add', 'origin', PORTER_URL], cwd=REPO)
-    head = run(['git', 'rev-parse', 'HEAD'], cwd=REPO).stdout.strip()
-    if head != want:
-        log('fetching porter', want[:9])
-        r = run(['git', 'fetch', '--depth', '1', 'origin', want], cwd=REPO)
-        if r.returncode == 0: r = run(['git', 'checkout', '-q', '-f', 'FETCH_HEAD'], cwd=REPO)
-        if r.returncode != 0: log('porter fetch failed:', (r.stderr or r.stdout)[-200:])
+    mark = REPO / '.nx2a_sha'
+    try: have = mark.read_text().strip()
+    except OSError: have = ''
+    if have != want:
+        log('downloading the porter', want[:9])
+        try:
+            data = fetch(os.environ.get('NX2A_PORTER_URL') or f'https://codeload.github.com/shirai91/nx2android/tar.gz/{want}')
+            tmp = REPO.with_name(REPO.name + '.new'); shutil.rmtree(tmp, ignore_errors=True); tmp.mkdir(parents=True)
+            with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as t:
+                if hasattr(tarfile, 'data_filter'): t.extractall(tmp, filter='data')
+                else: t.extractall(tmp)
+            kids = list(tmp.iterdir())
+            src = kids[0] if len(kids) == 1 and kids[0].is_dir() else tmp
+            (src / '.nx2a_sha').write_text(want)
+            shutil.rmtree(REPO, ignore_errors=True); src.rename(REPO); shutil.rmtree(tmp, ignore_errors=True)
+        except Exception as e:
+            log('porter download failed:', e)
+    if not REPO.exists(): return
     r = run([sys.executable, str(P / 'apply_patches.py'), str(REPO)])
     STATUS.write_text((r.stdout + r.stderr).strip() + f'\nexit {r.returncode}\n')
     log('patches:', (r.stdout.strip().splitlines() or ['?'])[-1], '| exit', r.returncode)

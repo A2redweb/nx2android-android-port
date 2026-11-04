@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """nx2android phone GUI: a local web app (stdlib only) that drives `python -m porter`. Only the app itself can use it: a random token, a Host check and a same-site cookie guard every request."""
-import hmac, http.cookies, json, os, re, signal, subprocess, sys, threading, time
+import glob, hmac, http.cookies, json, os, re, signal, subprocess, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -74,6 +74,19 @@ def build_port_args(o):
     return a
 
 
+def last_build_log():
+    """The newest build log of a port that just ran: what failed is in there, the job output only says which stage."""
+    best = None
+    for pat in (str(GAMES / '*' / '*_build' / 'logs' / '*.log'), '/sdcard/Switch/**/*_build/logs/*.log'):
+        for f in glob.glob(pat, recursive=True):
+            try: m = os.path.getmtime(f)
+            except OSError: continue
+            if not best or m > best[0]: best = (m, f)
+    if not best or time.time() - best[0] > 900: return {}
+    lines = Path(best[1]).read_text(errors='replace').splitlines()[-60:]
+    return {'file': best[1], 'tail': '\n'.join(l[:300] for l in lines)}
+
+
 def ver(d):
     try: return int(json.loads((d / 'payload.json').read_text())['version'])
     except Exception: return -1
@@ -118,6 +131,7 @@ class H(BaseHTTPRequestHandler):
             try: return self.j({'checks': json.loads(out)})
             except ValueError: return self.j({'error': (err or out)[-600:]})
         if u.path == '/api/config': return self.j(cfg())
+        if u.path == '/api/lastlog': return self.j(last_build_log())
         if u.path == '/api/job':
             since = int(q.get('since', ['0'])[0])
             return self.j({'lines': JOB['lines'][since:], 'next': len(JOB['lines']), 'done': JOB['done'], 'code': JOB['code']})
@@ -142,7 +156,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/config':
             if o.get('key') not in ('keys', 'out'): return self.j({'ok': False, 'msg': 'unknown setting'})
             out, err, c = porter('config', o['key'], o['value']); return self.j({'ok': c == 0, 'msg': (err or out)[-300:]})
-        if u.path == '/api/tools': return self.j({'started': start_job([sys.executable, '-m', 'porter', 'tools', '--download', '--progress', 'json'])})
+        if u.path == '/api/tools': return self.j({'started': start_job([sys.executable, str(HERE.parent / 'fast_tools.py')])})
         if u.path == '/api/inspect':
             out, err, c = porter('inspect', stage_folder(o['folder']), '--json')
             try: return self.j(json.loads(out))

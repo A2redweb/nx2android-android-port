@@ -3,11 +3,24 @@ permissions:
   contents: write
 concurrency:
   group: build
-  cancel-in-progress: true
+  cancel-in-progress: false
 on:
   push: { branches: [main] }
   workflow_dispatch: {}
 jobs:
+  tools:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish the trimmed NDK (once)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release download tools --pattern ndk-lite-r27c.tar.xz.sha256 -O /tmp/have.sha 2>/dev/null; then echo "already published"; exit 0; fi
+          bash tools/make_ndk_lite.sh
+          gh release create tools --prerelease --title "Build tools (trimmed Android NDK)" --notes "Only the parts of NDK r27c that the ARM host build reads. Made by tools/make_ndk_lite.sh." 2>/dev/null || true
+          gh release upload tools /tmp/ndk-lite-r27c.tar.xz /tmp/ndk-lite-r27c.tar.xz.sha256 --clobber
   apk:
     runs-on: ubuntu-latest
     steps:
@@ -24,27 +37,30 @@ jobs:
         run: |
           python3 tools/make_manifest.py
           git diff --exit-code app/src/main/assets/nx2a/payload/payload.json || { echo "payload.json is out of date: run  python3 tools/make_manifest.py --bump  and commit"; exit 1; }
-      - name: Build
+      - name: Signing key
         env:
+          GH_TOKEN: ${{ github.token }}
           KS_B64: ${{ secrets.KEYSTORE_B64 }}
-          KS_PASS: ${{ secrets.KEYSTORE_PASS }}
-          KS_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.p12"
+            { echo "KS_FILE=$RUNNER_TEMP/release.p12"; echo "KS_PASS=$KEYSTORE_PASS"; echo "KS_ALIAS=$KEYSTORE_ALIAS"; } >> "$GITHUB_ENV"
+          else
+            bash tools/signing_key.sh
+          fi
+      - name: Build the signed release APK
         run: |
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          if [ -n "$KS_B64" ]; then
-            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"; export KS_FILE="$RUNNER_TEMP/release.jks"
-            gradle --no-daemon assembleRelease
-          else
-            gradle --no-daemon assembleDebug
-          fi
+          gradle --no-daemon assembleRelease
       - uses: actions/upload-artifact@v4
-        with: { name: nx2android-apk, path: 'app/build/outputs/apk/**/*.apk' }
+        with: { name: nx2android-apk, path: 'app/build/outputs/apk/release/*.apk' }
       - name: Publish the APK as the latest release
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          APK="$(ls app/build/outputs/apk/*/*.apk | head -1)"
-          cp "$APK" nx2android.apk
+          cp "$(ls app/build/outputs/apk/release/*.apk | head -1)" nx2android.apk
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create latest nx2android.apk --prerelease --target "$GITHUB_SHA" --title "nx2android (latest build)" --notes "Built from $GITHUB_SHA. Debug-signed unless the signing secrets are set."
+          gh release create latest nx2android.apk --prerelease --target "$GITHUB_SHA" --title "nx2android (latest build)" --notes "Built from $GITHUB_SHA and signed with the app's release key."
