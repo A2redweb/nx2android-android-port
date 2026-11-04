@@ -8,6 +8,7 @@ from urllib.parse import urlparse, parse_qs
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import porter_sync   # noqa: E402
+import dotnet_probe   # noqa: E402
 REPO = Path(os.environ.get('NX2A_REPO', Path.home() / 'nx2android'))
 PORT = int(os.environ.get('NX2A_PORT', '7331'))
 TOKEN = os.environ.get('NX2A_TOKEN', '')
@@ -30,6 +31,20 @@ def cfg():
     except (OSError, ValueError): return {}
 
 
+def job_env():
+    """The base environment plus the .NET workaround the probe found, if any."""
+    e = dict(ENV)
+    cur = dotnet_probe.saved()
+    if cur: e.update(cur)
+    return e
+
+
+def need_dotnet():
+    try:
+        if dotnet_probe.find_dotnet() and dotnet_probe.saved() is None: dotnet_probe.tune()
+    except Exception as e: print('dotnet probe failed:', e, flush=True)
+
+
 def need_porter():
     try:
         if not porter_sync.complete(): porter_sync.sync()
@@ -38,16 +53,17 @@ def need_porter():
 
 def porter(*args, timeout=120):
     need_porter()
-    r = subprocess.run([sys.executable, '-m', 'porter', *args], cwd=REPO, env=ENV, capture_output=True, text=True, timeout=timeout)
+    r = subprocess.run([sys.executable, '-m', 'porter', *args], cwd=REPO, env=job_env(), capture_output=True, text=True, timeout=timeout)
     return r.stdout, r.stderr, r.returncode
 
 
 def start_job(argv, kind=''):
     if kind in ('port', 'tools', 'install'): need_porter()
+    if kind == 'port': need_dotnet()
     with LOCK:
         if JOB['p'] and JOB['p'].poll() is None: return False
         JOB.update(lines=[], done=False, code=None, kind=kind, stage='', frac=None, seq=JOB['seq'] + 1)
-        p = subprocess.Popen(argv, cwd=REPO, env=ENV, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace', start_new_session=True)
+        p = subprocess.Popen(argv, cwd=REPO, env=job_env(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace', start_new_session=True)
         JOB['p'] = p
 
     def pump():
@@ -194,6 +210,8 @@ class H(BaseHTTPRequestHandler):
             p = JOB['p']
             if p and p.poll() is None: os.killpg(p.pid, signal.SIGKILL)
             return self.j({'ok': True})
+        if u.path == '/api/dotnet':
+            return self.j({'report': dotnet_probe.tune(force=True), 'saved': dotnet_probe.saved()})
         if u.path == '/api/repair':
             ok, msg = porter_sync.sync(force=True); return self.j({'ok': ok, 'msg': msg, 'porter': porter_sync.state()})
         if u.path == '/api/restart':
