@@ -63,4 +63,5 @@ jobs:
         run: |
           cp "$(ls app/build/outputs/apk/release/*.apk | head -1)" nx2android.apk
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create latest nx2android.apk --prerelease --target "$GITHUB_SHA" --title "nx2android (latest build)" --notes "Built from $GITHUB_SHA and signed with the app's release key."
+          { echo "Built from $GITHUB_SHA."; echo; echo '```'; tail -c 1500 "${SIGN_LOG:-/dev/null}" 2>/dev/null; echo '```'; } > "$RUNNER_TEMP/notes.md"
+          gh release create latest nx2android.apk --prerelease --target "$GITHUB_SHA" --title "nx2android (latest build)" --notes-file "$RUNNER_TEMP/notes.md"
