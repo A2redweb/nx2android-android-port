@@ -2,6 +2,7 @@ package unknown.none.nx2android;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -91,10 +92,12 @@ public class MainActivity extends Activity {
         root.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
 
+        startForegroundService(new Intent(this, ProotService.class));
         if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+        } else {
+            askBattery();
         }
-        startForegroundService(new Intent(this, ProotService.class));
         h.post(tick);
     }
 
@@ -105,7 +108,6 @@ public class MainActivity extends Activity {
                     loadedToken = ProotService.token;
                     web.loadUrl("http://127.0.0.1:" + ProotService.PORT + "/?t=" + loadedToken);
                     web.setVisibility(View.VISIBLE);
-                    askBatteryOnce();
                 }
             } else {
                 if (!loadedToken.isEmpty()) { loadedToken = ""; web.setVisibility(View.GONE); }
@@ -116,14 +118,28 @@ public class MainActivity extends Activity {
         }
     };
 
-    private void askBatteryOnce() {
-        SharedPreferences sp = getSharedPreferences("nx2a", MODE_PRIVATE);
-        if (sp.getBoolean("asked_battery", false)) return;
-        sp.edit().putBoolean("asked_battery", true).apply();
+    @Override public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        super.onRequestPermissionsResult(code, perms, results);
+        askBattery();
+    }
+
+    /** Explains why first, then shows Android's own prompt. Asked again at most once if the user cancels. */
+    private void askBattery() {
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-        if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
-            startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())));
-        }
+        final SharedPreferences sp = getSharedPreferences("nx2a", MODE_PRIVATE);
+        if (pm.isIgnoringBatteryOptimizations(getPackageName()) || sp.getInt("battery_declined", 0) >= 2) return;
+        new AlertDialog.Builder(this)
+                .setTitle("Allow background activity?")
+                .setMessage("nx2android needs the battery setting \"Unrestricted\" (no limit) so that setup, downloads and porting keep running in the background while the screen is off or you use other apps. Without it Android can stop them halfway.\n\nTap OK to open Android's prompt for it.")
+                .setPositiveButton("OK", (d, w) -> {
+                    try {
+                        startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())));
+                    } catch (Exception e) {
+                        startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+                    }
+                })
+                .setNegativeButton("Cancel", (d, w) -> sp.edit().putInt("battery_declined", sp.getInt("battery_declined", 0) + 1).apply())
+                .show();
     }
 
     @Override public void onBackPressed() {
