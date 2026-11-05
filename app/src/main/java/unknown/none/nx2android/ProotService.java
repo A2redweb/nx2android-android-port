@@ -197,6 +197,10 @@ public class ProotService extends Service {
         write(new File(d, "uptime"), "284684.56 513853.46\n");
         write(new File(d, "version"), "Linux version 5.1.1-nx2a (proot@nx2a) (gcc 14.2.0) #1 SMP PREEMPT_DYNAMIC Fri Jan  1 00:00:00 UTC 2027\n");
         write(new File(d, "vmstat"), "nr_free_pages 1743136\nnr_zone_inactive_anon 179281\n");
+        write(new File(d, "cap_last_cap"), "40\n");
+        write(new File(d, "max_user_watches"), "4096\n");
+        write(new File(d, "overflowuid"), "65534\n");
+        write(new File(d, "overflowgid"), "65534\n");
         StringBuilder st = new StringBuilder("cpu  1957 0 2877 93280 262 342 254 87 0 0\n");
         int n = Runtime.getRuntime().availableProcessors();
         for (int i = 0; i < n; i++) st.append("cpu").append(i).append(" 31 0 226 12027 82 10 4 9 0 0\n");
@@ -210,12 +214,30 @@ public class ProotService extends Service {
         String sd = Environment.getExternalStorageDirectory().getAbsolutePath();
         String fp = new File(getFilesDir(), "fakeproc").getAbsolutePath();
         List<String> c = new ArrayList<>(Arrays.asList(
-                lib + "/libproot.so", "--kill-on-exit", "--link2symlink", "-0",
+                lib + "/libproot.so", "--kill-on-exit", "--link2symlink", "--sysvipc", "-L", "-0",
                 "-r", root.getAbsolutePath(), "-w", "/root",
                 "-b", "/dev", "-b", "/proc", "-b", "/sys", "-b", "/dev/urandom:/dev/random", "-b", sd + ":/sdcard",
-                "--kernel-release=5.1.1-nx2a"));
-        for (String n : new String[]{"stat", "loadavg", "uptime", "version", "vmstat"}) {
-            if (!readable("/proc/" + n)) { c.add("-b"); c.add(fp + "/" + n + ":/proc/" + n); }
+                "--kernel-release=\\Linux\\localhost\\6.17.0-proot-distro\\#1 SMP PREEMPT_DYNAMIC Fri, 10 Oct 2025 00:00:00 +0000\\aarch64\\localdomain\\-1\\"));
+        // The same stand-ins and device links Termux's proot-distro gives its guests: only where Android hides or lacks the real thing.
+        String[][] fake = {{"stat", "/proc/stat"}, {"loadavg", "/proc/loadavg"}, {"uptime", "/proc/uptime"}, {"version", "/proc/version"}, {"vmstat", "/proc/vmstat"},
+                {"cap_last_cap", "/proc/sys/kernel/cap_last_cap"}, {"max_user_watches", "/proc/sys/fs/inotify/max_user_watches"},
+                {"overflowuid", "/proc/sys/kernel/overflowuid"}, {"overflowgid", "/proc/sys/kernel/overflowgid"}};
+        for (String[] f : fake) {
+            if (!readable(f[1])) { c.add("-b"); c.add(fp + "/" + f[0] + ":" + f[1]); }
+        }
+        File shm = new File(getFilesDir(), "shm");
+        shm.mkdirs();
+        try { android.system.Os.chmod(shm.getAbsolutePath(), 01777); } catch (Exception ignored) { }
+        c.add("-b"); c.add(shm.getAbsolutePath() + ":/dev/shm");
+        if (!new File("/dev/fd").exists()) { c.add("-b"); c.add("/proc/self/fd:/dev/fd"); }
+        String[] std = {"stdin", "stdout", "stderr"};
+        for (int i = 0; i < 3; i++) {
+            if (!new File("/dev/" + std[i]).exists() && new File("/proc/self/fd/" + i).exists()) { c.add("-b"); c.add("/proc/self/fd/" + i + ":/dev/" + std[i]); }
+        }
+        if (new File("/sys/fs/selinux").exists()) {
+            File empty = new File(getFilesDir(), "sys_empty");
+            empty.mkdirs();
+            c.add("-b"); c.add(empty.getAbsolutePath() + ":/sys/fs/selinux");
         }
         c.addAll(Arrays.asList(
                 "/usr/bin/env", "-i", "HOME=/root", "PATH=/root/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
