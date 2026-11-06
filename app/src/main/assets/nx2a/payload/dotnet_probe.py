@@ -109,6 +109,14 @@ def system_report():
     def anon(size, prot, flags=0x22):
         ctypes.set_errno(0); return libc.mmap(None, size, prot, flags, -1, 0)
 
+    try:
+        st = {k: v.strip() for k, v in (l.split(':\t', 1) for l in Path('/proc/self/status').read_text().splitlines() if ':\t' in l)}
+        out.append('process signals: blocked ' + st.get('SigBlk', '?') + ', ignored ' + st.get('SigIgn', '?') + ' | seccomp ' + st.get('Seccomp', '?') + ', no_new_privs ' + st.get('NoNewPrivs', '?'))
+    except OSError: pass
+    try:
+        import server_state
+        out.append('signals when the GUI started: ' + str(server_state.before()))
+    except Exception: pass
     u = os.uname(); out.append(f'kernel {u.release} {u.machine} | uid {os.geteuid()} | python {sys.version.split()[0]}')
     for n in ('MEMLOCK', 'AS', 'NPROC', 'STACK', 'NOFILE'):
         s, h = resource.getrlimit(getattr(resource, 'RLIMIT_' + n)); f = lambda x: 'unlimited' if x == resource.RLIM_INFINITY else str(x)

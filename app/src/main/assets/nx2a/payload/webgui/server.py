@@ -6,9 +6,33 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 HERE = Path(__file__).parent
+
+
+def reset_signals():
+    """Android's Java process leaves some signals blocked or ignored, and children inherit that. Termux clears them before starting a shell; programs such as
+    the .NET runtime assume a normal Unix process. Everything started from here (including every job) inherits the clean state."""
+    try:
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, signal.valid_signals())
+        for s in signal.valid_signals():
+            if s in (signal.SIGKILL, signal.SIGSTOP, signal.SIGPIPE): continue
+            try:
+                if signal.getsignal(s) == signal.SIG_IGN: signal.signal(s, signal.SIG_DFL)
+            except (OSError, ValueError, RuntimeError): pass
+    except Exception: pass
+
+
+def sig_state():
+    try: return {k: v for k, v in (l.split(':\t', 1) for l in Path('/proc/self/status').read_text().splitlines() if ':\t' in l) if k in ('SigBlk', 'SigIgn', 'SigCgt', 'Seccomp', 'NoNewPrivs')}
+    except OSError: return {}
+
+
+SIG_BEFORE = sig_state()
+reset_signals()
 sys.path.insert(0, str(HERE.parent))
 import porter_sync   # noqa: E402
 import dotnet_probe   # noqa: E402
+import server_state   # noqa: E402
+server_state.set_before(SIG_BEFORE)
 REPO = Path(os.environ.get('NX2A_REPO', Path.home() / 'nx2android'))
 PORT = int(os.environ.get('NX2A_PORT', '7331'))
 TOKEN = os.environ.get('NX2A_TOKEN', '')
