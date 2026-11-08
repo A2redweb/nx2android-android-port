@@ -65,8 +65,8 @@ if(window.NX2A)$('quit').style.display='';
 function quit(){if(window.NX2A)NX2A.quit()}
 async function testDotnet(){const o=$('dnout');o.style.display='block';o.textContent='testing .NET (a minute at most); tap the result to copy it…';const r=await api('/api/dotnet',{});o.textContent=r.report.join('\n');o.onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(o.textContent);o.dataset.copied=1}}
 async function traceDotnet(){const o=$('dnout');o.style.display='block';if(!window.NX2A||!NX2A.traceDotnet){o.textContent='needs the newest app version';return}
- o.textContent='tracing .NET start-up, up to 3 minutes…';NX2A.traceDotnet();const t0=Date.now();
- const w=setInterval(async()=>{const r=await api('/api/tracefile');if(r.tail&&r.age<120){clearInterval(w);o.textContent='saved to '+r.path+'\n\n'+r.tail}else if(Date.now()-t0>200000){clearInterval(w);o.textContent='no trace file appeared'}},5000)}
+ o.textContent='tracing .NET start-up, about a minute and a half at most…';NX2A.traceDotnet();const t0=Date.now();
+ const w=setInterval(async()=>{const r=await api('/api/tracefile');if(r.tail&&r.age<120&&r.tail.indexOf('(finished)')>=0){clearInterval(w);o.textContent='saved to '+r.path+'\n\n'+r.tail}else if(Date.now()-t0>200000){clearInterval(w);o.textContent='no trace file appeared'}},5000)}
 async function repair(){$('pstat').textContent='repairing…';const r=await api('/api/repair',{});$('pstat').textContent='porter: '+r.porter+' — '+r.msg}
 async function status(){try{const s=await api('/api/status');$('pstat').textContent='porter: '+s.porter;$('ver').textContent='payload '+s.version;$('ban').style.display=s.update_ready?'block':'none'}catch(e){}}
 async function checkUpdate(){$('ver').textContent='checking…';try{const r=await api('/api/checkupdate',{});await status();if(!r.ready)$('ver').textContent+=' · up to date'}catch(e){$('ver').textContent='check failed'}}
