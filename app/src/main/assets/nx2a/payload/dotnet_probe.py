@@ -50,9 +50,17 @@ def build_shim():
     return str(SHIM) if r.returncode == 0 and SHIM.is_file() else None
 
 
+def prepare_tmp():
+    """.NET keeps shared-memory files under <TMPDIR>/.dotnet and insists on sticky, world-writable folders; Android's umask would make them private."""
+    for pth in ('/tmp', '/root/nxtmp'):
+        try: os.makedirs(pth, exist_ok=True); os.chmod(pth, 0o1777)
+        except OSError: pass
+
+
 def variants():
+    prepare_tmp()
     v = [('default', {}), ('smaller GC heap', HEAP), ('segment GC', SEG), ('segment GC, smaller heap', {**SEG, **HEAP}),
-         ('W^X on', {'DOTNET_EnableWriteXorExecute': '1'})]
+         ('W^X on', {'DOTNET_EnableWriteXorExecute': '1'}), ('private TMPDIR', {'TMPDIR': '/root/nxtmp'})]
     s = build_shim()
     if s:
         v[1:1] = [('start-up shim', {'LD_PRELOAD': s})]
@@ -142,10 +150,14 @@ def system_report():
     ctypes.set_errno(0); fd = libc.syscall(279, b'nx', 0); row('memfd_create (used when W^X is on)', fd >= 0, err() if fd < 0 else '')
     if fd >= 0: os.close(fd)
     try:
-        d = Path('/tmp/.dotnet'); (d / 'shm').mkdir(parents=True, exist_ok=True); (d / 'lockfiles').mkdir(exist_ok=True)
-        st = d.stat(); f = open(d / 'lockfiles' / 'probe', 'a'); fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB); f.close()
-        row('/tmp/.dotnet folders and file locks', True, f'owner uid {st.st_uid}, mode {oct(st.st_mode & 0o7777)}')
-    except OSError as e: row('/tmp/.dotnet folders and file locks', False, str(e))
+        d = Path('/tmp/dotnet-probe-dir'); d.mkdir(exist_ok=True); os.chmod(d, 0o1777); st = d.stat()
+        row('chmod 1777 on a folder keeps the sticky bit (.NET expects /tmp/.dotnet to be 1777)', (st.st_mode & 0o7777) == 0o1777, f'mode is {oct(st.st_mode & 0o7777)}, owner uid {st.st_uid}, umask {oct(os.umask(os.umask(0)))}')
+        f = open(d / 'lock', 'a'); fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB); f.close(); row('file locks (flock)', True)
+        d.joinpath('lock').unlink(); d.rmdir()
+    except OSError as e: row('folder permissions and file locks', False, str(e))
+    for pth in ('/tmp', '/tmp/.dotnet'):
+        try: s = os.stat(pth); out.append(f'{pth}: mode {oct(s.st_mode & 0o7777)} owner uid {s.st_uid}')
+        except OSError: out.append(f'{pth}: does not exist')
     for f in ('/proc/self/maps', '/proc/meminfo', '/proc/cpuinfo', '/proc/self/cgroup', '/sys/devices/system/cpu/online'):
         try: Path(f).read_bytes(); row(f'read {f}', True)
         except OSError as e: row(f'read {f}', False, e.strerror)
