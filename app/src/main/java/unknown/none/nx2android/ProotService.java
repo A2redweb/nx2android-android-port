@@ -193,8 +193,8 @@ public class ProotService extends Service {
             java.util.ArrayDeque<String> tail = new java.util.ArrayDeque<>();
             long lines = 0;
             Thread killer = new Thread(() -> {
-                try { Thread.sleep(150000); } catch (InterruptedException e) { return; }
-                p.destroy();
+                try { Thread.sleep(90000); } catch (InterruptedException e) { return; }
+                p.destroyForcibly();   // proot ignores a polite stop while it is busy logging
             });
             killer.start();
             try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
@@ -203,18 +203,23 @@ public class ProotService extends Service {
                     lines++;
                     tail.addLast(ln.length() > 400 ? ln.substring(0, 400) : ln);
                     if (tail.size() > 1500) tail.removeFirst();
+                    if (lines % 20000 == 0) saveTrace(out, tail, lines, false);   // partial results stay available while it runs
                 }
             }
             p.waitFor();
             killer.interrupt();
-            try (OutputStream fo = new FileOutputStream(out)) {
-                fo.write(("trace lines: " + lines + " (the last " + tail.size() + " are kept)\n").getBytes(StandardCharsets.UTF_8));
-                for (String s : tail) fo.write((s + "\n").getBytes(StandardCharsets.UTF_8));
-            }
+            saveTrace(out, tail, lines, true);
             log("trace saved to " + out.getAbsolutePath());
         } catch (Exception e) {
             log("trace failed: " + e);
         }
+    }
+
+    private static void saveTrace(File out, java.util.ArrayDeque<String> tail, long lines, boolean done) {
+        try (OutputStream fo = new FileOutputStream(out)) {
+            fo.write(("trace lines so far: " + lines + (done ? " (finished)" : " (still running)") + ", the last " + tail.size() + " are kept\n").getBytes(StandardCharsets.UTF_8));
+            for (String s : tail) fo.write((s + "\n").getBytes(StandardCharsets.UTF_8));
+        } catch (IOException ignored) { }
     }
 
     private void prepareRootfs(File root) throws IOException {

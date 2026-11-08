@@ -52,19 +52,7 @@ if NX2A_ARM_HOST:
  "subprocess.run([str(_sh.which('llvm-strip') or _sh.which('llvm-strip-18') or 'strip') if NX2A_ARM_HOST else str(bin_ / ('llvm-strip.exe' if os.name == 'nt' else 'llvm-strip')), '--strip-unneeded', str(out / 'libdmhost.so')], check=True)"),
 ])
 
-# 2. games like Dark Souls Remastered create thousands of GPU memory pools: raise the limit and keep the lookup order incrementally
-patch('memory pool limit', 'nxnative/dm/android/gfx_vk_core.c', 'pool_ord_insert', [
-('#define MAXPOOL 4096', '#define MAXPOOL 32768'),
-('static void pool_ord_make(void) {', '''static void pool_ord_insert(void) {   // the pool just added at g_npool - 1 goes into the order by lo (the order was valid for the others)
-    int n = g_npool - 1, a = 0, b = n; uint64_t k = g_pool[n].lo;
-    while (a < b) { int m = (a + b) / 2; if (g_pool[g_pool_ord[m]].lo <= k) a = m + 1; else b = m; }
-    memmove(&g_pool_ord[a + 1], &g_pool_ord[a], (size_t)(n - a) * sizeof *g_pool_ord); g_pool_ord[a] = (uint16_t)n;
-}
-static void pool_ord_make(void) {'''),
-('g_npool++; pool_ord_make();', 'g_npool++; pool_ord_insert();'),
-])
-
-# 3. every port gets the package unknownnone.nx2android.<game name> unless --package is given
+# 2. every port gets the package unknownnone.nx2android.<game name> unless --package is given
 patch('package names', 'porter/pipeline.py', "'unknownnone.nx2android.'", [
 ('self.package = o.package or ap.package',
  "self.package = o.package or 'unknownnone.nx2android.' + (re.sub(r'^[^a-z]+|[^a-z0-9]', '', ap.name.lower()) or 'game')"),
