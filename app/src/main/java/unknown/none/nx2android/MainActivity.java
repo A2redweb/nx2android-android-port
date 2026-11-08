@@ -167,6 +167,10 @@ public class MainActivity extends Activity {
     }
 
     private class Bridge {
+        @JavascriptInterface public void traceDotnet() {
+            startForegroundService(new Intent(MainActivity.this, ProotService.class).setAction("trace"));
+        }
+
         @JavascriptInterface public void installApk(String path) { runOnUiThread(() -> doInstall(path)); }
 
         @JavascriptInterface public void quit() {

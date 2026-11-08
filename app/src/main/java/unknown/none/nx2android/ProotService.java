@@ -53,6 +53,7 @@ public class ProotService extends Service {
 
     @Override public int onStartCommand(Intent i, int flags, int id) {
         startForeground(1, notification("nx2android is running"));
+        if (i != null && "trace".equals(i.getAction())) { new Thread(this::traceDotnet, "nx2a-trace").start(); return START_STICKY; }
         if (!running) {
             running = true; ready = false; failed = false;
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
@@ -181,6 +182,41 @@ public class ProotService extends Service {
         }
     }
 
+    /** Runs `dotnet --version` under proot's verbose syscall log (like strace) and keeps the last lines, which show the call that fails. */
+    private void traceDotnet() {
+        File out = new File(Environment.getExternalStorageDirectory(), "Switch/nx2android-proot-trace.txt");
+        try {
+            out.getParentFile().mkdirs();
+            ProcessBuilder b = proot("export DOTNET_EnableWriteXorExecute=0 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 DOTNET_CLI_TELEMETRY_OPTOUT=1; /root/.config/nx2android/toolchains/dotnet/dotnet --version; echo dotnet-exit=$?",
+                    null, Arrays.asList("-v", "6"));
+            final Process p = b.start();
+            java.util.ArrayDeque<String> tail = new java.util.ArrayDeque<>();
+            long lines = 0;
+            Thread killer = new Thread(() -> {
+                try { Thread.sleep(150000); } catch (InterruptedException e) { return; }
+                p.destroy();
+            });
+            killer.start();
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                String ln;
+                while ((ln = r.readLine()) != null) {
+                    lines++;
+                    tail.addLast(ln.length() > 400 ? ln.substring(0, 400) : ln);
+                    if (tail.size() > 1500) tail.removeFirst();
+                }
+            }
+            p.waitFor();
+            killer.interrupt();
+            try (OutputStream fo = new FileOutputStream(out)) {
+                fo.write(("trace lines: " + lines + " (the last " + tail.size() + " are kept)\n").getBytes(StandardCharsets.UTF_8));
+                for (String s : tail) fo.write((s + "\n").getBytes(StandardCharsets.UTF_8));
+            }
+            log("trace saved to " + out.getAbsolutePath());
+        } catch (Exception e) {
+            log("trace failed: " + e);
+        }
+    }
+
     private void prepareRootfs(File root) throws IOException {
         write(new File(root, "etc/resolv.conf"), "nameserver 1.1.1.1\nnameserver 8.8.8.8\n");
         write(new File(root, "etc/hosts"), "127.0.0.1 localhost\n::1 localhost\n");
@@ -208,7 +244,9 @@ public class ProotService extends Service {
         write(new File(d, "stat"), st.toString());
     }
 
-    private ProcessBuilder proot(String cmd, Map<String, String> extra) {
+    private ProcessBuilder proot(String cmd, Map<String, String> extra) { return proot(cmd, extra, null); }
+
+    private ProcessBuilder proot(String cmd, Map<String, String> extra, List<String> prootArgs) {
         String lib = getApplicationInfo().nativeLibraryDir;
         File root = new File(getFilesDir(), "ubuntu");
         String sd = Environment.getExternalStorageDirectory().getAbsolutePath();
@@ -245,6 +283,7 @@ public class ProotService extends Service {
                 "DOTNET_EnableWriteXorExecute=0", "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1"));
         if (extra != null) for (Map.Entry<String, String> e : extra.entrySet()) c.add(e.getKey() + "=" + e.getValue());
         c.add("bash"); c.add("-c"); c.add(cmd);
+        if (prootArgs != null) c.addAll(1, prootArgs);
         ProcessBuilder b = new ProcessBuilder(c);
         b.redirectErrorStream(true);
         Map<String, String> env = b.environment();

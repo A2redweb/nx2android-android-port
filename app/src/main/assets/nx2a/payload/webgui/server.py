@@ -28,6 +28,7 @@ def sig_state():
 
 SIG_BEFORE = sig_state()
 reset_signals()
+os.umask(0o022)
 sys.path.insert(0, str(HERE.parent))
 import porter_sync   # noqa: E402
 import dotnet_probe   # noqa: E402
@@ -263,6 +264,10 @@ class H(BaseHTTPRequestHandler):
             return self.j({'ok': True})
         if u.path == '/api/checkupdate':
             got = check_update(); return self.j({'ready': got or ver(OTA) > int(VERSION or 0), 'msg': UPD['msg']})
+        if u.path == '/api/tracefile':
+            t = Path('/sdcard/Switch/nx2android-proot-trace.txt')
+            try: return self.j({'path': str(t), 'age': int(time.time() - t.stat().st_mtime), 'tail': '\n'.join(t.read_text(errors='replace').splitlines()[-90:])})
+            except OSError: return self.j({})
         if u.path == '/api/dotnet':
             rep = dotnet_probe.full_report()
             try: Path('/sdcard/Switch').mkdir(parents=True, exist_ok=True); Path('/sdcard/Switch/nx2android-dotnet-report.txt').write_text('\n'.join(rep))
