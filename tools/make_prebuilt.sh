@@ -18,14 +18,14 @@ build() {
     || { say "$n: BUILD FAILED: $(grep -E 'error|Error' "out/$n.log" | head -3 | tr '\n' ' ' | cut -c1-500)"; rm -rf "out/$n"; return 1; }
   [ -f "out/$n/dmsh_xlate/dmsh_xlate.dll" ] || : > "out/$n/dmsh_xlate/dmsh_xlate.dll"
   # the CI machine is arm64 too: start both tools for real
-  if "out/$n/dmsh_xlate/dmsh_xlate" --source-sha > "out/$n.t1" 2>&1 && grep -qE '^[0-9a-f]{16}' "out/$n.t1" && ( "out/$n/nx_extract/nx_extract" 2>&1 | grep -qi usage ); then
+  "out/$n/dmsh_xlate/dmsh_xlate" --source-sha > "out/$n.t1" 2>&1; "out/$n/nx_extract/nx_extract" > "out/$n.t2" 2>&1   # no pipes: pipefail would count nx_extract's exit code 2 (usage) as a failure
+  if grep -qE '^[0-9a-f]{16}' "out/$n.t1" && grep -qi usage "out/$n.t2"; then
     say "$n: built and starts (translator prints $(head -c 16 "out/$n.t1"))"
-  else say "$n: built but does not start: $(head -c 300 "out/$n.t1" | tr '\n' ' ')"; rm -rf "out/$n"; fi
+  else say "$n: built but does not start: translator: $(head -c 200 "out/$n.t1" | tr '\n' ' ') extractor: $(head -c 200 "out/$n.t2" | tr '\n' ' ')"; rm -rf "out/$n"; fi
 }
-build mono --self-contained true -p:UseMonoRuntime=true -p:InvariantGlobalization=true
 sudo apt-get install -y -qq clang zlib1g-dev >/dev/null 2>&1
 build aot --self-contained true -p:PublishAot=true -p:InvariantGlobalization=true
-VARS=""; for v in mono aot; do [ -d "out/$v" ] && VARS="$VARS $v"; done
+VARS=""; for v in aot; do [ -d "out/$v" ] && VARS="$VARS $v"; done
 if [ -n "$VARS" ]; then
   python3 - "$KEY" "$SHA" $VARS <<'PY'
 import json, sys
