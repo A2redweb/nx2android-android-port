@@ -123,7 +123,7 @@ def porter(*args, timeout=120):
 
 def start_job(argv, kind=''):
     if kind in ('port', 'tools', 'install'): need_porter()
-    if kind == 'port': need_dotnet()
+    if kind in ('port', 'tools'): need_dotnet()   # the ready-made .NET tools first: with them active the porter does not download the 1.5 GB .NET SDK
     with LOCK:
         if JOB['p'] and JOB['p'].poll() is None: return False
         JOB.update(lines=[], done=False, code=None, kind=kind, stage='', frac=None, seq=JOB['seq'] + 1)
