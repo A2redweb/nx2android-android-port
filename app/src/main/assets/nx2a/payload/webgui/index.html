@@ -39,7 +39,7 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
  <div class="chk"><input type="checkbox" id="experimental"><span>Experimental (game not ported yet, may not start)</span></div>
  <div class="chk"><input type="checkbox" id="install"><span>Install with adb when done (needs the Device tab)</span></div>
  <div class="chk"><input type="checkbox" id="replace_signer"><span>Replace an app signed with another key (deletes its saves)</span></div>
- <label>Custom Vulkan driver (optional): path to a Turnip/Mesa .so (or a .zip that holds one)</label><input type="text" id="vkdriver" placeholder="/sdcard/Switch/Drivers/libvulkan_freedreno.so">
+ <label>Custom Vulkan driver for this game (optional): a Turnip/Mesa .so, or a .zip that holds one</label><div class="row"><input type="text" id="vkdriver" placeholder="/sdcard/Switch/Drivers/libvulkan_freedreno.so"><button class="b g" style="flex:none" onclick="pick('vkdriver',false)">Browse</button></div><div class="sm">Remembered per game folder: each game can use its own driver.</div>
  <label>Build jobs (lower uses less RAM)</label><input type="number" id="jobs" value="3" min="1" max="8">
  <button class="b" onclick="port()">Port</button></div>
  <div class="card" id="fin"><b>Finish</b><div class="sm">Install the APK, then copy the game data.</div>
@@ -57,7 +57,7 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
 <section id="log"><div class="card"><div id="stage" class="sm">idle</div><div class="bar"><i id="pb"></i></div>
  <div class="row"><button class="b g" onclick="cancel()">Cancel</button><button class="b g" onclick="copyLog()">Copy log</button></div></div><pre id="out"></pre></section>
 </main>
-<div id="modal"><div class="card"><div id="mpath" class="sm"></div><div id="mlist"></div><div class="row"><button class="b" id="msel">Use this folder</button><button class="b g" onclick="modal.style.display='none'">Close</button></div></div></div>
+<div id="modal"><div class="card"><div id="mplaces" class="row" style="flex-wrap:wrap"></div><div id="mpath" class="sm"></div><div id="mlist"></div><div class="row"><button class="b" id="msel">Use this folder</button><button class="b g" onclick="modal.style.display='none'">Close</button></div></div></div>
 <script>
 const $=id=>document.getElementById(id),modal=$('modal');let since=0,timer=null,raw=[];
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>tab(b.dataset.t));
@@ -76,7 +76,10 @@ async function loadCfg(){const c=await api('/api/config');$('keys').value=c.keys
 async function saveCfg(){const a=await api('/api/config',{key:'keys',value:$('keys').value});const b=await api('/api/config',{key:'out',value:$('outcfg').value});$('cfgmsg').textContent=(a.ok&&b.ok)?'saved':(a.msg||b.msg);doctor()}
 async function tools(){await api('/api/tools',{});tab('log');poll(true)}
 async function inspect(){$('insp').textContent='reading…';const r=await api('/api/inspect',{folder:$('folder').value});$('insp').textContent=JSON.stringify(r,null,1).slice(0,1500)}
-async function port(){const o={folder:$('folder').value,app_name:$('app_name').value,package:$('package').value,jobs:$('jobs').value,vulkan_driver:$('vkdriver').value};['touch','fps60','experimental','install','replace_signer'].forEach(k=>o[k]=$(k).checked);
+function drvKey(){return 'drv:'+($('folder').value||'').trim()}
+function drvLoad(){try{$('vkdriver').value=localStorage.getItem(drvKey())||''}catch(e){}}
+function drvSave(){try{const v=$('vkdriver').value.trim();if(v)localStorage.setItem(drvKey(),v);else localStorage.removeItem(drvKey())}catch(e){}}
+async function port(){drvSave();const o={folder:$('folder').value,app_name:$('app_name').value,package:$('package').value,jobs:$('jobs').value,vulkan_driver:$('vkdriver').value};['touch','fps60','experimental','install','replace_signer'].forEach(k=>o[k]=$(k).checked);
  const r=await api('/api/port',o);if(r.error)return alert(r.error);if(!r.started)alert('A job is already running');tab('log');poll(true)}
 function installApk(){const p=$('apkpath').value;if(!p)return alert('Port a game first, or type the APK path');if(window.NX2A)NX2A.installApk(p);else alert('Open the APK from your file manager: '+p)}
 async function cancel(){await api('/api/cancel',{})}
@@ -89,15 +92,20 @@ async function tick(){const r=await api('/api/job?since='+since);since=r.next;
    if(ev.ev=='stage')$('stage').textContent='Stage '+ev.k+'/'+ev.n+': '+ev.name;
    else if(ev.ev=='progress'&&ev.frac!=null)$('pb').style.width=Math.min(100,100*ev.frac)+'%';
    else if(ev.ev=='stage_end'){$('out').textContent+=(ev.ok?'✓ ':'✗ ')+ev.name+(ev.summary?' — '+ev.summary:'')+'\n';$('pb').style.width='0'}
+   else if(ev.ev=='say'&&ev.msg)$('out').textContent+=String(ev.msg).replace(/\[(RED|GREEN|YELLOW|CYAN|BOLD|DIM|RESET)\]/g,'')+'\n';
    else if(ev.ev=='result'){$('apkpath').value=ev.apk||'';$('datapath').value=ev.data||'';$('out').textContent+='Done: '+ev.apk+'\n'+ev.data+'\nPackage: '+ev.package+'\n'}
   }else $('out').textContent+=ln+'\n'}
  $('out').scrollTop=1e9;if(r.done){clearInterval(timer);$('stage').textContent=(r.code===0?'finished':'stopped (exit '+r.code+')');if(r.code!==0)details()}}
 async function details(){try{const d=await api('/api/lastlog');if(d.file){const t='--- '+d.file+' (last lines)\n'+d.tail+'\n';raw.push(t);$('out').textContent+='\n'+t;$('out').scrollTop=1e9}}catch(e){}}
 function copyLog(){const t=raw.join('\n');(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).catch(()=>{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()});$('stage').textContent+=' · log copied'}
-async function pick(id,dir,path){path=path||($(id).value&&dir?$(id).value:'/sdcard');const r=await api('/api/ls?path='+encodeURIComponent(path));
+async function places(id,dir){const r=await api('/api/ls?path=/storage');const v=(r.items||[]).filter(i=>i.d&&i.n!='emulated'&&i.n!='self').map(i=>['SD card '+i.n,'/storage/'+i.n]);
+ const all=[['Internal storage','/sdcard'],...v];$('mplaces').innerHTML=all.map(a=>`<button class="b g" style="flex:none;margin:0 6px 6px 0" data-q="${a[1]}">${a[0]}</button>`).join('');
+ $('mplaces').querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>pick(id,dir,b.dataset.q))}
+async function pick(id,dir,path){places(id,dir);path=path||($(id).value&&dir?$(id).value:'/sdcard');const r=await api('/api/ls?path='+encodeURIComponent(path));
  $('mpath').textContent=r.path+(r.error?' — '+r.error:'');$('mlist').innerHTML=`<div class="li" data-up="${r.parent}">⬆ ..</div>`+r.items.map(i=>`<div class="li" data-p="${r.path.replace(/\/$/,'')}/${i.n}" data-d="${i.d}">${i.d?'📁':'📄'} ${i.n}</div>`).join('');
  $('mlist').querySelector('[data-up]').onclick=e=>pick(id,dir,e.target.dataset.up);
  $('mlist').querySelectorAll('[data-p]').forEach(e=>e.onclick=()=>{if(e.dataset.d=='true')pick(id,dir,e.dataset.p);else if(!dir){$(id).value=e.dataset.p;modal.style.display='none'}});
- $('msel').style.display=dir?'':'none';$('msel').onclick=()=>{$(id).value=r.path;modal.style.display='none'};modal.style.display='block'}
+ $('msel').style.display=dir?'':'none';$('msel').onclick=()=>{$(id).value=r.path;modal.style.display='none';if(id=='folder')drvLoad()};modal.style.display='block'}
 doctor();loadCfg();status();setInterval(status,60000);
+$('folder').addEventListener('change',drvLoad);$('folder').addEventListener('input',drvLoad);
 </script></body></html>

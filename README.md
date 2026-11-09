@@ -21,6 +21,9 @@ To ship a change: edit the files → `python3 tools/make_manifest.py --bump` →
 Open the app: first start unpacks Ubuntu (a minute or two) and installs the tools (about 10 minutes, needs internet; keep the app open). Then Setup → set prod.keys and tap *Download missing tools* (the trimmed NDK, about 0.3 GB, plus the ready-made .NET tools), Port → pick the game folder → Port. When it finishes: *Install APK*, then copy the data folder by hand (see below).
 Free space: about 6 GB, plus twice the size of each game.
 
+## Credits
+Maintained by [A2redweb](https://github.com/A2redweb), built together with Claude (Anthropic). The porter is [shirai91/nx2android](https://github.com/shirai91/nx2android); see the credits there.
+
 ## Notes for users
 - Android 14 and newer: Developer options → *Disable child process restrictions*, or Android may kill long builds. Set the app's battery usage to *Unrestricted*.
 - The app targets an old Android API on purpose (proot cannot run programs from app storage on newer targets). That means no Google Play; use the APK from Releases/Actions.
