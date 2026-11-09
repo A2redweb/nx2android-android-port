@@ -23,7 +23,7 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
 <main>
 <section id="setup" class="on">
  <div class="card"><div id="checks" class="sm">checking…</div><div class="row"><button class="b g" onclick="doctor()">Re-check</button><button class="b" onclick="tools()">Download missing tools</button></div>
- <div id="pstat" class="sm" style="margin-top:8px"></div><div class="row"><button class="b g" onclick="repair()">Repair porter</button><button class="b g" onclick="testDotnet()">Test .NET</button></div><div class="row"><button class="b g" onclick="traceDotnet()">Trace .NET (advanced)</button></div><pre id="dnout" style="display:none"></pre>
+ <div id="pstat" class="sm" style="margin-top:8px"></div><div class="row"><button class="b g" onclick="repair()">Update / repair porter</button><button class="b g" onclick="testDotnet()">Test .NET</button></div><div class="row"><button class="b g" onclick="traceDotnet()">Trace .NET (advanced)</button><button class="b g" onclick="expDotnet()">Try proot options</button></div><pre id="dnout" style="display:none"></pre>
  <div class="sm" style="margin-top:8px">First time: the build tools are about 1.5 GB. Keep 6 GB free plus twice the size of each game.</div></div>
  <div class="card"><label>prod.keys path (from your own Switch)</label><div class="row"><input type="text" id="keys" placeholder="/sdcard/switch/prod.keys"><button class="b g" style="flex:none" onclick="pick('keys',false)">Browse</button></div>
  <label>Output folder (default /sdcard/Switch/Ports)</label><div class="row"><input type="text" id="outcfg" placeholder="/sdcard/Switch/Ports"><button class="b g" style="flex:none" onclick="pick('outcfg',true)">Browse</button></div>
@@ -67,8 +67,11 @@ async function testDotnet(){const o=$('dnout');o.style.display='block';o.textCon
 async function traceDotnet(){const o=$('dnout');o.style.display='block';if(!window.NX2A||!NX2A.traceDotnet){o.textContent='needs the newest app version';return}
  o.textContent='tracing .NET start-up, about a minute and a half at most…';NX2A.traceDotnet();const t0=Date.now();
  const w=setInterval(async()=>{const r=await api('/api/tracefile');if(r.tail&&r.age<120&&r.tail.indexOf('(finished)')>=0){clearInterval(w);o.textContent='saved to '+r.path+'\n\n'+r.tail}else if(Date.now()-t0>200000){clearInterval(w);o.textContent='no trace file appeared'}},5000)}
+async function expDotnet(){const o=$('dnout');o.style.display='block';if(!window.NX2A||!NX2A.runProotExperiments){o.textContent='needs the newest app version';return}
+ o.textContent='trying 11 proot configurations, a few minutes…';NX2A.runProotExperiments();const t0=Date.now();
+ const w=setInterval(async()=>{const r=await api('/api/expfile');if(r.text&&r.age<400){o.textContent=r.text;if(r.text.indexOf('(finished)')>=0)clearInterval(w)}if(Date.now()-t0>900000)clearInterval(w)},4000)}
 async function repair(){$('pstat').textContent='repairing…';const r=await api('/api/repair',{});$('pstat').textContent='porter: '+r.porter+' — '+r.msg}
-async function status(){try{const s=await api('/api/status');$('pstat').textContent='porter: '+s.porter;$('ver').textContent='payload '+s.version;$('ban').style.display=s.update_ready?'block':'none'}catch(e){}}
+async function status(){try{const s=await api('/api/status');$('pstat').textContent='porter: '+s.porter+(s.porter_commit?' · '+s.porter_commit:'');$('ver').textContent='payload '+s.version;$('ban').style.display=s.update_ready?'block':'none'}catch(e){}}
 async function checkUpdate(){$('ver').textContent='checking…';try{const r=await api('/api/checkupdate',{});await status();if(!r.ready)$('ver').textContent+=' · up to date'}catch(e){$('ver').textContent='check failed'}}
 async function restart(){await api('/api/restart',{});$('ban').textContent='Restarting…';const w=setInterval(async()=>{try{await api('/api/status');clearInterval(w);location.reload()}catch(e){}},1500)}
 async function doctor(){const d=await api('/api/doctor');if(d.error){$('checks').textContent=d.error;return}

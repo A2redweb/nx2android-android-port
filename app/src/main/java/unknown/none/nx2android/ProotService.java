@@ -53,6 +53,7 @@ public class ProotService extends Service {
 
     @Override public int onStartCommand(Intent i, int flags, int id) {
         startForeground(1, notification("nx2android is running"));
+        if (i != null && "experiments".equals(i.getAction())) { new Thread(this::experiments, "nx2a-exp").start(); return START_STICKY; }
         if (i != null && "trace".equals(i.getAction())) { new Thread(this::traceDotnet, "nx2a-trace").start(); return START_STICKY; }
         if (!running) {
             running = true; ready = false; failed = false;
@@ -215,6 +216,73 @@ public class ProotService extends Service {
         }
     }
 
+    /** Starts dotnet in a fresh proot for each combination of options; the first combination that works is saved and used from the next start on. */
+    private void experiments() {
+        File out = new File(Environment.getExternalStorageDirectory(), "Switch/nx2android-proot-experiments.txt");
+        out.getParentFile().mkdirs();
+        String cmd = "export DOTNET_EnableWriteXorExecute=0 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 DOTNET_CLI_TELEMETRY_OPTOUT=1; "
+                + "/root/.config/nx2android/toolchains/dotnet/dotnet --version 2>&1 | head -2; echo \"exit=${PIPESTATUS[0]}\"";
+        String[][] variants = {
+                {"current options", ""},
+                {"without seccomp acceleration (PROOT_NO_SECCOMP)", "noseccomp"},
+                {"without --sysvipc", "nosysvipc"},
+                {"without -L", "nol"},
+                {"without the fake kernel identity", "nofakekernel"},
+                {"not fake root (no -0)", "noroot"},
+                {"without the extra bindings", "minbinds"},
+                {"link2symlink folder like proot-distro", "l2sdir"},
+                {"no seccomp + not fake root", "noseccomp,noroot"},
+                {"no seccomp, sysvipc, -L, fake kernel", "noseccomp,nosysvipc,nol,nofakekernel"},
+                {"everything off", "noseccomp,nosysvipc,nol,nofakekernel,noroot,minbinds"}};
+        StringBuilder rep = new StringBuilder("proot option experiments (dotnet --version, a fresh proot each time)\n");
+        String winner = null;
+        for (String[] v : variants) {
+            java.util.Properties o = new java.util.Properties();
+            if (!v[1].isEmpty()) for (String k : v[1].split(",")) o.setProperty(k, "1");
+            String res;
+            try {
+                final Process p = proot(cmd, null, null, o).start();
+                Thread killer = new Thread(() -> {
+                    try { Thread.sleep(40000); } catch (InterruptedException e) { return; }
+                    p.destroyForcibly();
+                });
+                killer.start();
+                StringBuilder sb = new StringBuilder();
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                    String ln;
+                    int n = 0;
+                    while ((ln = r.readLine()) != null && n++ < 8) sb.append(ln.length() > 120 ? ln.substring(0, 120) : ln).append(" | ");
+                }
+                p.waitFor();
+                killer.interrupt();
+                res = sb.toString().trim();
+                if (res.contains("exit=0") && winner == null) winner = v[1];
+            } catch (Exception e) {
+                res = "error " + e;
+            }
+            rep.append(v[0]).append(": ").append(res).append('\n');
+            writeText(out, rep + "(running)\n");
+        }
+        try {
+            if (winner == null) rep.append("no configuration worked\n");
+            else if (winner.isEmpty()) rep.append("the current options already work\n");
+            else {
+                StringBuilder o = new StringBuilder();
+                for (String k : winner.split(",")) o.append(k).append("=1\n");
+                write(new File(getFilesDir(), "ubuntu/root/.nx2a_proot_opts"), o.toString());
+                rep.append("SAVED the first configuration that worked (").append(winner).append("). Quit the app and open it again.\n");
+            }
+        } catch (IOException e) {
+            rep.append("could not save: ").append(e).append('\n');
+        }
+        rep.append("(finished)\n");
+        writeText(out, rep.toString());
+    }
+
+    private static void writeText(File f, String text) {
+        try (OutputStream o = new FileOutputStream(f)) { o.write(text.getBytes(StandardCharsets.UTF_8)); } catch (IOException ignored) { }
+    }
+
     private static void saveTrace(File out, java.util.ArrayDeque<String> tail, long lines, boolean done) {
         try (OutputStream fo = new FileOutputStream(out)) {
             fo.write(("trace lines so far: " + lines + (done ? " (finished)" : " (still running)") + ", the last " + tail.size() + " are kept\n").getBytes(StandardCharsets.UTF_8));
@@ -251,7 +319,37 @@ public class ProotService extends Service {
 
     private ProcessBuilder proot(String cmd, Map<String, String> extra) { return proot(cmd, extra, null); }
 
-    private ProcessBuilder proot(String cmd, Map<String, String> extra, List<String> prootArgs) {
+    private ProcessBuilder proot(String cmd, Map<String, String> extra, List<String> prootArgs) { return proot(cmd, extra, prootArgs, loadOpts()); }
+
+    private java.util.Properties loadOpts() {
+        java.util.Properties p = new java.util.Properties();
+        try (InputStream in = new java.io.FileInputStream(new File(getFilesDir(), "ubuntu/root/.nx2a_proot_opts"))) { p.load(in); } catch (Exception ignored) { }
+        return p;
+    }
+
+    /** proot options that the experiments can switch off (or on) when a program only starts without them. */
+    private void applyOpts(ProcessBuilder b, java.util.Properties o) {
+        List<String> c = b.command();
+        if (o.containsKey("nosysvipc")) c.remove("--sysvipc");
+        if (o.containsKey("nol")) c.remove("-L");
+        if (o.containsKey("noroot")) c.remove("-0");
+        if (o.containsKey("nofakekernel")) c.removeIf(s -> s.startsWith("--kernel-release="));
+        if (o.containsKey("minbinds")) {
+            String fd = getFilesDir().getAbsolutePath();
+            for (int i = c.size() - 2; i >= 0; i--) {
+                if (c.get(i).equals("-b") && (c.get(i + 1).startsWith(fd) || c.get(i + 1).startsWith("/proc/self/fd"))) { c.remove(i + 1); c.remove(i); }
+            }
+        }
+        Map<String, String> env = b.environment();
+        if (o.containsKey("noseccomp")) env.put("PROOT_NO_SECCOMP", "1");
+        if (o.containsKey("l2sdir")) {
+            File d = new File(getFilesDir(), "ubuntu/.l2s");
+            d.mkdirs();
+            env.put("PROOT_L2S_DIR", d.getAbsolutePath());
+        }
+    }
+
+    private ProcessBuilder proot(String cmd, Map<String, String> extra, List<String> prootArgs, java.util.Properties opts) {
         String lib = getApplicationInfo().nativeLibraryDir;
         File root = new File(getFilesDir(), "ubuntu");
         String sd = Environment.getExternalStorageDirectory().getAbsolutePath();
@@ -295,6 +393,7 @@ public class ProotService extends Service {
         env.put("PROOT_LOADER", lib + "/libproot-loader.so");
         env.put("PROOT_TMP_DIR", new File(getFilesDir(), "ptmp").getAbsolutePath());
         env.put("LD_LIBRARY_PATH", lib);
+        applyOpts(b, opts);
         return b;
     }
 
