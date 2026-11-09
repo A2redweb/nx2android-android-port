@@ -51,6 +51,21 @@ def _smoke(d):
     return True, 'both tools start'
 
 
+def _fetch(base, name, d):
+    want = urllib.request.urlopen(f'{base}/{name}.sha256', timeout=30).read().decode().split()[0]
+    ROOT.mkdir(parents=True, exist_ok=True)
+    tgz = ROOT / name; h = hashlib.sha256()
+    with urllib.request.urlopen(f'{base}/{name}', timeout=120) as r, open(tgz, 'wb') as f:
+        while True:
+            b = r.read(1 << 20)
+            if not b: break
+            f.write(b); h.update(b)
+    if h.hexdigest() != want: tgz.unlink(); raise ValueError('the download does not match its checksum')
+    tmp = ROOT / (d.name + '.tmp'); shutil.rmtree(tmp, ignore_errors=True); tmp.mkdir()
+    subprocess.run(['tar', '-xJf', str(tgz), '-C', str(tmp)], check=True); tgz.unlink()
+    shutil.rmtree(d, ignore_errors=True); tmp.rename(d)
+
+
 def install():
     """Returns report lines."""
     k = key()
@@ -58,23 +73,16 @@ def install():
     out = []
     d = ROOT / k
     if not (d / 'manifest.json').is_file():
-        try:
-            base = _base(); name = NAME.format(k)
-            want = urllib.request.urlopen(f'{base}/{name}.sha256', timeout=30).read().decode().split()[0]
-            ROOT.mkdir(parents=True, exist_ok=True)
-            tgz = ROOT / name; h = hashlib.sha256()
-            with urllib.request.urlopen(f'{base}/{name}', timeout=120) as r, open(tgz, 'wb') as f:
-                while True:
-                    b = r.read(1 << 20)
-                    if not b: break
-                    f.write(b); h.update(b)
-            if h.hexdigest() != want: tgz.unlink(); raise ValueError('the download does not match its checksum')
-            tmp = ROOT / (k + '.tmp'); shutil.rmtree(tmp, ignore_errors=True); tmp.mkdir()
-            subprocess.run(['tar', '-xJf', str(tgz), '-C', str(tmp)], check=True); tgz.unlink()
-            shutil.rmtree(d, ignore_errors=True); tmp.rename(d)
-            out.append(f'downloaded the prebuilt tools for porter sources {k}')
-        except Exception as e:
-            return [f'prebuilt tools for this porter version are not available yet ({e}). They are built in the cloud every few hours; try again later.']
+        base = _base(); errs = []
+        for how in ('exact', 'latest'):
+            try:
+                if how == 'exact': name = NAME.format(k)
+                else: name = json.loads(urllib.request.urlopen(f'{base}/latest.json', timeout=30).read().decode())['file']
+                _fetch(base, name, d)
+                out.append(f'downloaded the ready-made tools ({"built for this porter" if how == "exact" else "newest build; none was made for porter sources " + k})')
+                break
+            except Exception as e: errs.append(f'{how}: {e}')
+        else: return [f'ready-made tools not available ({"; ".join(errs)}). They are built in the cloud every 6 hours; try again later.']
     manifest = json.loads((d / 'manifest.json').read_text())
     for v in manifest.get('variants', []):
         ok, detail = _smoke(d / v)
