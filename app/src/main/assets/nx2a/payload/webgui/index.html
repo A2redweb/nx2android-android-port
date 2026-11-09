@@ -40,8 +40,10 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
  <div class="chk"><input type="checkbox" id="install"><span>Install with adb when done (needs the Device tab)</span></div>
  <div class="chk"><input type="checkbox" id="replace_signer"><span>Replace an app signed with another key (deletes its saves)</span></div>
  <label>Custom Vulkan driver for this game (optional): a Turnip/Mesa .so, or a .zip that holds one</label><div class="row"><input type="text" id="vkdriver" placeholder="/sdcard/Switch/Drivers/libvulkan_freedreno.so"><button class="b g" style="flex:none" onclick="pick('vkdriver',false)">Browse</button></div><div class="sm">Remembered per game folder: each game can use its own driver.</div>
+ <div class="chk"><input type="checkbox" id="keep_work"><span>Keep the working files after the port (faster to port again, but uses a lot of storage)</span></div>
  <label>Build jobs (lower uses less RAM)</label><input type="number" id="jobs" value="3" min="1" max="8">
  <button class="b" onclick="port()">Port</button></div>
+ <div class="card"><b>Free space</b><div class="sm" id="workinfo">Working files of earlier ports take space in the private storage of this app.</div><div class="row"><button class="b g" onclick="workInfo()">Check</button><button class="b" onclick="cleanWork()">Delete working files</button></div></div>
  <div class="card" id="fin"><b>Finish</b><div class="sm">Install the APK, then copy the game data.</div>
  <label>APK</label><input type="text" id="apkpath" placeholder="/sdcard/Switch/Ports/Game.apk">
  <label>Data folder</label><input type="text" id="datapath" placeholder="/sdcard/Switch/Ports/Game-data">
@@ -79,7 +81,9 @@ async function inspect(){$('insp').textContent='reading…';const r=await api('/
 function drvKey(){return 'drv:'+($('folder').value||'').trim()}
 function drvLoad(){try{$('vkdriver').value=localStorage.getItem(drvKey())||''}catch(e){}}
 function drvSave(){try{const v=$('vkdriver').value.trim();if(v)localStorage.setItem(drvKey(),v);else localStorage.removeItem(drvKey())}catch(e){}}
-async function port(){drvSave();const o={folder:$('folder').value,app_name:$('app_name').value,package:$('package').value,jobs:$('jobs').value,vulkan_driver:$('vkdriver').value};['touch','fps60','experimental','install','replace_signer'].forEach(k=>o[k]=$(k).checked);
+async function workInfo(){const r=await api('/api/work');$('workinfo').textContent=(r.bytes/1e9).toFixed(1)+' GB of working files from '+r.dirs.length+' port(s)'+(r.dirs.length?': '+r.dirs.join(', '):'')}
+async function cleanWork(){if(!confirm('Delete the working files of finished and failed ports? The APK and data in the output folder stay. Porting the same game again starts from scratch.'))return;const r=await api('/api/clean',{});$('workinfo').textContent=r.error||('Freed '+(r.freed/1e9).toFixed(1)+' GB')}
+async function port(){drvSave();const o={folder:$('folder').value,app_name:$('app_name').value,package:$('package').value,jobs:$('jobs').value,vulkan_driver:$('vkdriver').value,keep_work:$('keep_work').checked};['touch','fps60','experimental','install','replace_signer'].forEach(k=>o[k]=$(k).checked);
  const r=await api('/api/port',o);if(r.error)return alert(r.error);if(!r.started)alert('A job is already running');tab('log');poll(true)}
 function installApk(){const p=$('apkpath').value;if(!p)return alert('Port a game first, or type the APK path');if(window.NX2A)NX2A.installApk(p);else alert('Open the APK from your file manager: '+p)}
 async function cancel(){await api('/api/cancel',{})}
