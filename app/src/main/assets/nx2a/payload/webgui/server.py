@@ -266,7 +266,6 @@ class H(BaseHTTPRequestHandler):
             try: return self.j(json.loads(out))
             except ValueError: return self.j({'error': (err or out)[-600:]})
         if u.path == '/api/port': return self.j({'started': start_job([sys.executable, '-m', 'porter', *build_port_args(o)], 'port')})
-        if u.path == '/api/copydata': return self.j({'started': start_job([sys.executable, str(HERE.parent / 'copydata.py'), o['data']], 'copy')})
         if u.path == '/api/install':
             a = ['install', o['data'], '--progress', 'json'] + (['--replace-signer'] if o.get('replace_signer') else [])
             return self.j({'started': start_job([sys.executable, '-m', 'porter', *a], 'install')})
