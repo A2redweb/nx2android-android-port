@@ -57,7 +57,7 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
 <section id="log"><div class="card"><div id="stage" class="sm">idle</div><div class="bar"><i id="pb"></i></div>
  <div class="row"><button class="b g" onclick="cancel()">Cancel</button><button class="b g" onclick="copyLog()">Copy log</button></div></div><pre id="out"></pre></section>
 </main>
-<div id="modal"><div class="card"><div id="mplaces" class="row" style="flex-wrap:wrap"></div><div id="mpath" class="sm"></div><div id="mlist"></div><div class="row"><button class="b" id="msel">Use this folder</button><button class="b g" onclick="modal.style.display='none'">Close</button></div></div></div>
+<div id="modal"><div class="card"><div class="row" id="mnative" style="display:none"><button class="b" id="mnb" style="width:100%">Use Android file picker (SD card, USB…)</button></div><div id="mplaces" class="row" style="flex-wrap:wrap"></div><div id="mpath" class="sm"></div><div id="mlist"></div><div class="row"><button class="b" id="msel">Use this folder</button><button class="b g" onclick="modal.style.display='none'">Close</button></div></div></div>
 <script>
 const $=id=>document.getElementById(id),modal=$('modal');let since=0,timer=null,raw=[];
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>tab(b.dataset.t));
@@ -101,7 +101,8 @@ function copyLog(){const t=raw.join('\n');(navigator.clipboard?navigator.clipboa
 async function places(id,dir){const r=await api('/api/ls?path=/storage');const v=(r.items||[]).filter(i=>i.d&&i.n!='emulated'&&i.n!='self').map(i=>['SD card '+i.n,'/storage/'+i.n]);
  const all=[['Internal storage','/sdcard'],...v];$('mplaces').innerHTML=all.map(a=>`<button class="b g" style="flex:none;margin:0 6px 6px 0" data-q="${a[1]}">${a[0]}</button>`).join('');
  $('mplaces').querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>pick(id,dir,b.dataset.q))}
-async function pick(id,dir,path){places(id,dir);path=path||($(id).value&&dir?$(id).value:'/sdcard');const r=await api('/api/ls?path='+encodeURIComponent(path));
+function nx2aPicked(id,p){$(id).value=p;modal.style.display='none';if(id=='folder')drvLoad()}
+async function pick(id,dir,path){places(id,dir);if(window.NX2A&&NX2A.pick){$('mnative').style.display='flex';$('mnb').onclick=()=>{modal.style.display='none';NX2A.pick(id,!!dir)}}else $('mnative').style.display='none';path=path||($(id).value&&dir?$(id).value:'/sdcard');const r=await api('/api/ls?path='+encodeURIComponent(path));
  $('mpath').textContent=r.path+(r.error?' — '+r.error:'');$('mlist').innerHTML=`<div class="li" data-up="${r.parent}">⬆ ..</div>`+r.items.map(i=>`<div class="li" data-p="${r.path.replace(/\/$/,'')}/${i.n}" data-d="${i.d}">${i.d?'📁':'📄'} ${i.n}</div>`).join('');
  $('mlist').querySelector('[data-up]').onclick=e=>pick(id,dir,e.target.dataset.up);
  $('mlist').querySelectorAll('[data-p]').forEach(e=>e.onclick=()=>{if(e.dataset.d=='true')pick(id,dir,e.dataset.p);else if(!dir){$(id).value=e.dataset.p;modal.style.display='none'}});
