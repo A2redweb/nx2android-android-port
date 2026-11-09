@@ -30,6 +30,9 @@ Maintained by [A2redweb](https://github.com/A2redweb), built together with Claud
 - You need your own prod.keys and game dumps. Nothing is included.
 - The GUI only listens on 127.0.0.1, and every request needs a random per-launch token, so other apps on the phone cannot drive it.
 
+## Storage
+While porting, the porter keeps its working files (the extracted game, shader work) in the app's private storage, which only this app can delete. After a successful port the app deletes them for you (tick *Keep the working files* to keep them for a faster re-port). Port tab → *Free space* shows what is left over from earlier or failed ports and deletes it.
+
 ## Copying the game data
 Android stops apps from writing into another app's `Android/data`, so the data folder is copied by hand: see [docs/COPY_DATA.md](docs/COPY_DATA.md) (rooted and Shizuku).
 
