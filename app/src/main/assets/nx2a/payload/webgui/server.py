@@ -164,6 +164,28 @@ def stage_folder(folder):
     return str(d)
 
 
+def stage_driver(path):
+    """A custom Vulkan driver (Turnip and the like) for --vulkan-driver: a .so, or a .zip that holds one. Copied to internal storage; checked to be an arm64 ELF library."""
+    import shutil, zipfile
+    p = Path(path.strip()).expanduser()
+    if not p.is_file(): raise ValueError(f'driver not found: {p}')
+    d = GAMES / '_drivers'; d.mkdir(parents=True, exist_ok=True)
+    if p.suffix.lower() == '.zip':
+        with zipfile.ZipFile(p) as z:
+            names = [n for n in z.namelist() if n.lower().endswith('.so') and not n.endswith('/')]
+            if not names: raise ValueError(f'{p.name}: no .so library inside the zip')
+            if len(names) > 1: raise ValueError(f'{p.name}: more than one .so inside ({", ".join(Path(n).name for n in names[:4])}); extract the driver and pick the .so')
+            out = d / Path(names[0]).name
+            with z.open(names[0]) as r, open(out, 'wb') as f: shutil.copyfileobj(r, f)
+    elif p.suffix.lower() == '.so':
+        out = d / p.name; shutil.copyfile(p, out)
+    else: raise ValueError('the driver must be a .so file (or a .zip that holds one)')
+    h = out.read_bytes()[:20]
+    if h[:4] != b'\x7fELF' or h[4] != 2 or int.from_bytes(h[18:20], 'little') != 183:
+        out.unlink(); raise ValueError(f'{out.name} is not an arm64 (64-bit ARM) library')
+    return str(out)
+
+
 def build_port_args(o):
     a = ['port', stage_folder(o['folder']), '--progress', 'json']
     out = o.get('out') or ('' if cfg().get('out') else DEFAULT_OUT)
@@ -174,6 +196,7 @@ def build_port_args(o):
     for flag in ('touch', 'fps60', 'experimental', 'install', 'replace_signer'):
         if o.get(flag): a.append('--' + flag.replace('_', '-'))
     if o.get('jobs'): a += ['--jobs', str(max(1, int(o['jobs'])))]
+    if (o.get('vulkan_driver') or '').strip(): a += ['--vulkan-driver', stage_driver(o['vulkan_driver'])]
     return a
 
 
@@ -265,7 +288,10 @@ class H(BaseHTTPRequestHandler):
             out, err, c = porter('inspect', stage_folder(o['folder']), '--json')
             try: return self.j(json.loads(out))
             except ValueError: return self.j({'error': (err or out)[-600:]})
-        if u.path == '/api/port': return self.j({'started': start_job([sys.executable, '-m', 'porter', *build_port_args(o)], 'port')})
+        if u.path == '/api/port':
+            try: args = build_port_args(o)
+            except (ValueError, OSError, Exception) as e: return self.j({'started': False, 'error': str(e)})
+            return self.j({'started': start_job([sys.executable, '-m', 'porter', *args], 'port')})
         if u.path == '/api/install':
             a = ['install', o['data'], '--progress', 'json'] + (['--replace-signer'] if o.get('replace_signer') else [])
             return self.j({'started': start_job([sys.executable, '-m', 'porter', *a], 'install')})
