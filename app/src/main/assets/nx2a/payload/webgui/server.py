@@ -32,6 +32,7 @@ os.umask(0o022)
 sys.path.insert(0, str(HERE.parent))
 import porter_sync   # noqa: E402
 import dotnet_probe   # noqa: E402
+import prebuilt   # noqa: E402
 import server_state   # noqa: E402
 server_state.set_before(SIG_BEFORE)
 REPO = Path(os.environ.get('NX2A_REPO', Path.home() / 'nx2android'))
@@ -61,6 +62,7 @@ def job_env():
     e = dict(ENV)
     cur = dotnet_probe.saved()
     if cur: e.update(cur)
+    e.update(prebuilt.env())   # the CI-built .NET tools, when they are installed and start
     return e
 
 
@@ -96,7 +98,17 @@ def auto_update():
         check_update(); time.sleep(300)
 
 
+def need_prebuilt():
+    """The .NET tools built in the cloud with runtimes that start on this phone. Returns True when they are active."""
+    try:
+        if prebuilt.active(): return True
+        prebuilt.install()
+        return bool(prebuilt.active())
+    except Exception as e: print('prebuilt tools failed:', e, flush=True); return False
+
+
 def need_dotnet():
+    if need_prebuilt(): return
     try:
         if dotnet_probe.find_dotnet() and dotnet_probe.saved() is None: dotnet_probe.tune()
     except Exception as e: print('dotnet probe failed:', e, flush=True)
@@ -136,7 +148,8 @@ def start_job(argv, kind=''):
         JOB['code'] = p.wait()
         if JOB['kind'] == 'tools' and JOB['code'] == 0:     # check right away that .NET starts on this phone
             try:
-                JOB['lines'].append('.NET check:'); JOB['lines'].extend('  ' + l for l in dotnet_probe.tune())
+                JOB['lines'].append('prebuilt .NET tools:'); JOB['lines'].extend('  ' + l for l in prebuilt.install())
+                if not prebuilt.active(): JOB['lines'].append('.NET check:'); JOB['lines'].extend('  ' + l for l in dotnet_probe.tune())
             except Exception as e: JOB['lines'].append(f'.NET check failed: {e}')
         JOB['done'] = True
     threading.Thread(target=pump, daemon=True).start()
@@ -287,6 +300,11 @@ class H(BaseHTTPRequestHandler):
             try: Path('/sdcard/Switch').mkdir(parents=True, exist_ok=True); Path('/sdcard/Switch/nx2android-dotnet-report.txt').write_text('\n'.join(rep))
             except OSError: pass
             return self.j({'report': rep, 'saved': dotnet_probe.saved()})
+        if u.path == '/api/prebuilt':
+            need_porter(); rep = prebuilt.install()
+            try: Path('/sdcard/Switch').mkdir(parents=True, exist_ok=True); Path('/sdcard/Switch/nx2android-prebuilt-report.txt').write_text('\n'.join(rep))
+            except OSError: pass
+            return self.j({'report': rep, 'state': prebuilt.state()})
         if u.path == '/api/repair':
             ok, msg = porter_sync.sync(force=True); return self.j({'ok': ok, 'msg': msg, 'porter': porter_sync.state()})
         if u.path == '/api/restart':
