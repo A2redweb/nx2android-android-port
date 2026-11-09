@@ -15,7 +15,7 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
 .ck{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}.ck:last-child{border:0}.dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex:none}.ok{background:var(--ok)}.no{background:var(--red)}.opt{background:#777}
 .sm{color:var(--mut);font-size:12px;word-break:break-all}pre{background:#08080a;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:46vh;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-all}
 .bar{height:8px;background:#101014;border-radius:6px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--red);width:0}
-#modal{position:fixed;inset:0;background:#000c;display:none;padding:14px;overflow:auto}#modal .card{max-width:720px;margin:auto}.li{padding:10px;border-bottom:1px solid var(--line)}
+#fmodal{position:fixed;inset:0;background:#000c;display:none;padding:14px;overflow:auto;z-index:5}#fmodal .card{max-width:720px;margin:auto}#fmodal .li{display:flex;gap:8px;align-items:center}#fmodal .li .nm{flex:1;word-break:break-all}#fmodal .sz{color:var(--mut,#999);font-size:12px;white-space:nowrap}#modal{position:fixed;inset:0;background:#000c;display:none;padding:14px;overflow:auto}#modal .card{max-width:720px;margin:auto}.li{padding:10px;border-bottom:1px solid var(--line)}
 </style></head><body>
 <header><b class="t"><i>nx2</i>android</b><span id="ver"></span><button onclick="checkUpdate()">Update</button><button id="quit" onclick="quit()" style="display:none">Quit</button></header>
 <div id="ban">An update is ready. <button onclick="restart()">Restart to apply</button></div>
@@ -43,6 +43,7 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
  <div class="chk"><input type="checkbox" id="keep_work"><span>Keep the working files after the port (faster to port again, but uses a lot of storage)</span></div>
  <label>Build jobs (lower uses less RAM)</label><input type="number" id="jobs" value="3" min="1" max="8">
  <button class="b" onclick="port()">Port</button></div>
+ <div class="card"><b>Files</b><div class="sm">Look through the private storage of this app (where games are staged and built) or your phone, and delete what you do not need.</div><div class="row"><button class="b g" onclick="fm('/root')">Open file manager</button></div></div>
  <div class="card"><b>Free space</b><div class="sm" id="workinfo">Working files of earlier ports take space in the private storage of this app.</div><div class="row"><button class="b g" onclick="workInfo()">Check</button><button class="b" onclick="cleanWork()">Delete working files</button></div></div>
  <div class="card" id="fin"><b>Finish</b><div class="sm">Install the APK, then copy the game data.</div>
  <label>APK</label><input type="text" id="apkpath" placeholder="/sdcard/Switch/Ports/Game.apk">
@@ -59,9 +60,10 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
 <section id="log"><div class="card"><div id="stage" class="sm">idle</div><div class="bar"><i id="pb"></i></div>
  <div class="row"><button class="b g" onclick="cancel()">Cancel</button><button class="b g" onclick="copyLog()">Copy log</button></div></div><pre id="out"></pre></section>
 </main>
+<div id="fmodal"><div class="card"><div id="fplaces" class="row" style="flex-wrap:wrap"></div><div id="fpath" class="sm"></div><div id="flist"></div><div class="row"><button class="b g" onclick="fmAll()">Select all</button><button class="b" onclick="fmDel()">Delete selected</button><button class="b g" onclick="fmodal.style.display='none'">Close</button></div><div id="fmsg" class="sm"></div></div></div>
 <div id="modal"><div class="card"><div class="row" id="mnative" style="display:none"><button class="b" id="mnb" style="width:100%">Use Android file picker (SD card, USB…)</button></div><div id="mplaces" class="row" style="flex-wrap:wrap"></div><div id="mpath" class="sm"></div><div id="mlist"></div><div class="row"><button class="b" id="msel">Use this folder</button><button class="b g" onclick="modal.style.display='none'">Close</button></div></div></div>
 <script>
-const $=id=>document.getElementById(id),modal=$('modal');let since=0,timer=null,raw=[];
+const $=id=>document.getElementById(id),modal=$('modal'),fmodal=$('fmodal');let since=0,timer=null,raw=[];
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>tab(b.dataset.t));
 function tab(t){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==t));document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id==t))}
 async function api(p,o){const r=await fetch(p,o?{method:'POST',body:JSON.stringify(o)}:{});return r.json()}
@@ -83,6 +85,21 @@ function drvLoad(){try{$('vkdriver').value=localStorage.getItem(drvKey())||''}ca
 function drvSave(){try{const v=$('vkdriver').value.trim();if(v)localStorage.setItem(drvKey(),v);else localStorage.removeItem(drvKey())}catch(e){}}
 async function workInfo(){const r=await api('/api/work');$('workinfo').textContent=(r.bytes/1e9).toFixed(1)+' GB of working files from '+r.dirs.length+' port(s)'+(r.dirs.length?': '+r.dirs.join(', '):'')}
 async function cleanWork(){if(!confirm('Delete the working files of finished and failed ports? The APK and data in the output folder stay. Porting the same game again starts from scratch.'))return;const r=await api('/api/clean',{});$('workinfo').textContent=r.error||('Freed '+(r.freed/1e9).toFixed(1)+' GB')}
+let fmCur='/root';
+const hsz=n=>n==null?'':n>=1e9?(n/1e9).toFixed(1)+' GB':n>=1e6?(n/1e6).toFixed(1)+' MB':n>=1e3?(n/1e3).toFixed(0)+' KB':n+' B';
+async function fm(path){fmCur=path||fmCur;const r=await api('/api/ls?path='+encodeURIComponent(fmCur)+'&hidden=1');const v=await api('/api/ls?path=/storage');
+ const pl=[['App storage','/root'],['Games / builds','/root/games'],['Internal storage','/sdcard'],...(v.items||[]).filter(i=>i.d&&i.n!='emulated'&&i.n!='self').map(i=>['SD card '+i.n,'/storage/'+i.n])];
+ $('fplaces').innerHTML=pl.map(a=>`<button class="b g" style="flex:none;margin:0 6px 6px 0" data-q="${a[1]}">${a[0]}</button>`).join('');
+ $('fplaces').querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>fm(b.dataset.q));
+ fmCur=r.path;$('fpath').textContent=r.path+(r.error?' — '+r.error:'');$('fmsg').textContent='';
+ $('flist').innerHTML=`<div class="li" data-up="${r.parent}">⬆ ..</div>`+r.items.map(i=>`<div class="li"><input type="checkbox" data-c="${r.path.replace(/\/$/,'')}/${i.n}"><span class="nm" data-p="${r.path.replace(/\/$/,'')}/${i.n}" data-d="${i.d}">${i.d?'📁':(i.l?'🔗':'📄')} ${i.n}</span><span class="sz">${hsz(i.s)}</span></div>`).join('');
+ $('flist').querySelector('[data-up]').onclick=e=>fm(e.target.dataset.up);
+ $('flist').querySelectorAll('[data-p]').forEach(e=>e.onclick=()=>{if(e.dataset.d=='true')fm(e.dataset.p)});fmodal.style.display='block'}
+function fmAll(){const c=[...$('flist').querySelectorAll('[data-c]')];const on=c.some(x=>!x.checked);c.forEach(x=>x.checked=on)}
+async function fmDel(){const sel=[...$('flist').querySelectorAll('[data-c]:checked')].map(x=>x.dataset.c);if(!sel.length){$('fmsg').textContent='Nothing selected';return}
+ if(!confirm('Delete '+sel.length+' item(s) for good?\n\n'+sel.slice(0,8).map(p=>p.split('/').pop()).join('\n')+(sel.length>8?'\n…':'')))return;
+ $('fmsg').textContent='deleting…';const r=await api('/api/rm',{paths:sel});if(r.error){$('fmsg').textContent=r.error;return}
+ const bad=r.results.filter(x=>x[1]!='ok');await fm(fmCur);$('fmsg').textContent=(r.results.length-bad.length)+' deleted'+(bad.length?'; '+bad.map(x=>x[0].split('/').pop()+': '+x[1]).join('; '):'')}
 async function port(){drvSave();const o={folder:$('folder').value,app_name:$('app_name').value,package:$('package').value,jobs:$('jobs').value,vulkan_driver:$('vkdriver').value,keep_work:$('keep_work').checked};['touch','fps60','experimental','install','replace_signer'].forEach(k=>o[k]=$(k).checked);
  const r=await api('/api/port',o);if(r.error)return alert(r.error);if(!r.started)alert('A job is already running');tab('log');poll(true)}
 function installApk(){const p=$('apkpath').value;if(!p)return alert('Port a game first, or type the APK path');if(window.NX2A)NX2A.installApk(p);else alert('Open the APK from your file manager: '+p)}
