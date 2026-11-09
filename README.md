@@ -15,7 +15,7 @@ To ship a change: edit the files → `python3 tools/make_manifest.py --bump` →
 - The porter follows upstream's `main` (`porter_track: main`, checked at start and every 6 hours, never during a port). Before swapping it in, our patches are applied to it; if they no longer fit, the working porter is kept. `porter_sha` is the pinned fallback: to pin, remove `porter_track` and change `porter_sha`, then bump. To add system packages: edit `inner_setup.sh`, then `make_manifest.py --setup --bump`.
 
 ## What needs a new APK
-`launcher.py`, the Java files, the manifest, the proot build, the bundled Ubuntu release.
+`launcher.py`, the Java files, the manifest, the proot build, the bundled Ubuntu release. 
 
 ## Using it
 Open the app: first start unpacks Ubuntu (a minute or two) and installs the tools (about 10 minutes, needs internet; keep the app open). Then Setup → set prod.keys and tap *Download missing tools* (the trimmed NDK, about 0.3 GB, plus the ready-made .NET tools), Port → pick the game folder → Port. When it finishes: *Install APK*, then copy the data folder by hand (see below).
