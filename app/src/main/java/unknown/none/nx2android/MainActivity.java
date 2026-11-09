@@ -167,6 +167,10 @@ public class MainActivity extends Activity {
     }
 
     private class Bridge {
+        @JavascriptInterface public void runProotExperiments() {
+            startForegroundService(new Intent(MainActivity.this, ProotService.class).setAction("experiments"));
+        }
+
         @JavascriptInterface public void traceDotnet() {
             startForegroundService(new Intent(MainActivity.this, ProotService.class).setAction("trace"));
         }

@@ -80,6 +80,16 @@ def check_update():
         UPD.update(t=time.time(), msg=f'update check failed: {e}'); return False
 
 
+def auto_porter():
+    """Follows upstream's newest commit, but never swaps the porter while a job is running."""
+    time.sleep(60)
+    while True:
+        try:
+            if JOB['done']: porter_sync.sync()
+        except Exception as e: print('porter follow failed:', e, flush=True)
+        time.sleep(6 * 3600)
+
+
 def auto_update():
     time.sleep(20)
     while True:
@@ -211,7 +221,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/status':
             try: pat = STATUS.read_text()[-400:]
             except OSError: pat = ''
-            return self.j({'version': VERSION, 'ota': ver(OTA), 'update_ready': ver(OTA) > int(VERSION or 0), 'patches': pat, 'porter': porter_sync.state(), 'update_msg': UPD['msg']})
+            return self.j({'version': VERSION, 'ota': ver(OTA), 'update_ready': ver(OTA) > int(VERSION or 0), 'patches': pat, 'porter': porter_sync.state(), 'porter_commit': porter_sync.commit(), 'update_msg': UPD['msg']})
         if u.path == '/api/doctor':
             out, err, code = porter('doctor', '--json')
             try: return self.j({'checks': json.loads(out)})
@@ -264,6 +274,10 @@ class H(BaseHTTPRequestHandler):
             return self.j({'ok': True})
         if u.path == '/api/checkupdate':
             got = check_update(); return self.j({'ready': got or ver(OTA) > int(VERSION or 0), 'msg': UPD['msg']})
+        if u.path == '/api/expfile':
+            t = Path('/sdcard/Switch/nx2android-proot-experiments.txt')
+            try: return self.j({'path': str(t), 'age': int(time.time() - t.stat().st_mtime), 'text': t.read_text(errors='replace')})
+            except OSError: return self.j({})
         if u.path == '/api/tracefile':
             t = Path('/sdcard/Switch/nx2android-proot-trace.txt')
             try: return self.j({'path': str(t), 'age': int(time.time() - t.stat().st_mtime), 'tail': '\n'.join(t.read_text(errors='replace').splitlines()[-90:])})
@@ -283,5 +297,6 @@ class H(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     need_porter()
     threading.Thread(target=auto_update, daemon=True).start()
+    threading.Thread(target=auto_porter, daemon=True).start()
     print(f'nx2android GUI {VERSION} on 127.0.0.1:{PORT} (porter: {REPO})', flush=True)
     ThreadingHTTPServer(('127.0.0.1', PORT), H).serve_forever()
