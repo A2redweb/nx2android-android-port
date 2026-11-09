@@ -166,7 +166,42 @@ public class MainActivity extends Activity {
         }
     }
 
+    private String pickId = "";
+    private boolean pickDir = false;
+
+    /** Android's own file picker (it lists SD cards, USB drives and every storage app); the answer is turned into a path the porter can read. */
+    private void startPick(String id, boolean dir) {
+        pickId = id; pickDir = dir;
+        Intent i = new Intent(dir ? Intent.ACTION_OPEN_DOCUMENT_TREE : Intent.ACTION_OPEN_DOCUMENT);
+        if (!dir) { i.addCategory(Intent.CATEGORY_OPENABLE); i.setType("*/*"); }
+        try { startActivityForResult(i, 4711); }
+        catch (Exception e) { Toast.makeText(this, "No file picker on this phone", Toast.LENGTH_LONG).show(); }
+    }
+
+    /** content://.../primary:Games/x or .../1234-ABCD:Games/x -> /sdcard/Games/x or /storage/1234-ABCD/Games/x; "" when the picker's choice has no real path (Downloads, cloud apps). */
+    private String pathOf(Uri u) {
+        try {
+            String id = pickDir ? android.provider.DocumentsContract.getTreeDocumentId(u) : android.provider.DocumentsContract.getDocumentId(u);
+            if (id == null) return "";
+            if (id.startsWith("raw:")) return id.substring(4);
+            int k = id.indexOf(':');
+            if (k < 0) return "";
+            String vol = id.substring(0, k), rest = id.substring(k + 1);
+            String base = vol.equals("primary") ? Environment.getExternalStorageDirectory().getAbsolutePath() : "/storage/" + vol;
+            return rest.isEmpty() ? base : base + "/" + rest;
+        } catch (Exception e) { return ""; }
+    }
+
+    @Override protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != 4711 || res != RESULT_OK || data == null || data.getData() == null) return;
+        String p = pathOf(data.getData());
+        if (p.isEmpty()) { Toast.makeText(this, "That location has no file path. Pick it from Internal storage or the SD card.", Toast.LENGTH_LONG).show(); return; }
+        web.evaluateJavascript("nx2aPicked(" + org.json.JSONObject.quote(pickId) + "," + org.json.JSONObject.quote(p) + ")", null);
+    }
+
     private class Bridge {
+        @JavascriptInterface public void pick(String id, boolean dir) { runOnUiThread(() -> startPick(id, dir)); }
         @JavascriptInterface public void runProotExperiments() {
             startForegroundService(new Intent(MainActivity.this, ProotService.class).setAction("experiments"));
         }
