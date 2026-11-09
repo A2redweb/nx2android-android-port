@@ -359,6 +359,20 @@ public class ProotService extends Service {
                 "-r", root.getAbsolutePath(), "-w", "/root",
                 "-b", "/dev", "-b", "/proc", "-b", "/sys", "-b", "/dev/urandom:/dev/random", "-b", sd + ":/sdcard",
                 "--kernel-release=\\Linux\\localhost\\6.17.0-proot-distro\\#1 SMP PREEMPT_DYNAMIC Fri, 10 Oct 2025 00:00:00 +0000\\aarch64\\localdomain\\-1\\"));
+        // Removable storage (an SD card) is mounted at /storage/<id>: bind it at the same path so the file picker and the porter can read games kept there.
+        java.util.Set<String> vols = new java.util.TreeSet<>();
+        File[] ext = getExternalFilesDirs(null);
+        if (ext != null) for (File e : ext) {
+            if (e == null) continue;
+            String p = e.getAbsolutePath(); int k = p.indexOf("/Android/");
+            if (k > 0 && p.startsWith("/storage/") && !p.startsWith("/storage/emulated")) vols.add(p.substring(0, k));
+        }
+        File[] sv = new File("/storage").listFiles();
+        if (sv != null) for (File v : sv) {
+            String n = v.getName();
+            if (!n.equals("emulated") && !n.equals("self") && v.isDirectory() && v.canRead()) vols.add(v.getAbsolutePath());
+        }
+        for (String v : vols) { c.add("-b"); c.add(v); }
         // The same stand-ins and device links Termux's proot-distro gives its guests: only where Android hides or lacks the real thing.
         String[][] fake = {{"stat", "/proc/stat"}, {"loadavg", "/proc/loadavg"}, {"uptime", "/proc/uptime"}, {"version", "/proc/version"}, {"vmstat", "/proc/vmstat"},
                 {"cap_last_cap", "/proc/sys/kernel/cap_last_cap"}, {"max_user_watches", "/proc/sys/fs/inotify/max_user_watches"},
