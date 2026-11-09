@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """The porter's two .NET tools, prebuilt in CI with runtimes that start on phones where the standard .NET runtime does not ("Failed to create CoreCLR").
 install() fetches the build that belongs to the porter on this phone, tries each variant with a real start, and keeps the first that works."""
-import hashlib, json, os, re, shutil, subprocess, sys, urllib.request
+import hashlib, json, os, re, shutil, subprocess, sys, time, urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import urllib.error  # noqa: E402
 import prebuilt_key   # noqa: E402
 
 ROOT = Path(os.environ.get('NX2A_PREBUILT_DIR', '/root/prebuilt'))
@@ -51,11 +52,22 @@ def _smoke(d):
     return True, 'both tools start'
 
 
+def _open(url, timeout=60, tries=6):
+    """GitHub's release downloads sometimes answer 502/503/504 for a moment: try again a few times before giving up."""
+    for i in range(tries):
+        try: return urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'nx2android-app'}), timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 500, 502, 503, 504) or i == tries - 1: raise
+        except (urllib.error.URLError, OSError):
+            if i == tries - 1: raise
+        time.sleep(3 * (i + 1))
+
+
 def _fetch(base, name, d):
-    want = urllib.request.urlopen(f'{base}/{name}.sha256', timeout=30).read().decode().split()[0]
+    want = _open(f'{base}/{name}.sha256', 30).read().decode().split()[0]
     ROOT.mkdir(parents=True, exist_ok=True)
     tgz = ROOT / name; h = hashlib.sha256()
-    with urllib.request.urlopen(f'{base}/{name}', timeout=120) as r, open(tgz, 'wb') as f:
+    with _open(f'{base}/{name}', 120) as r, open(tgz, 'wb') as f:
         while True:
             b = r.read(1 << 20)
             if not b: break
@@ -77,7 +89,7 @@ def install():
         for how in ('exact', 'latest'):
             try:
                 if how == 'exact': name = NAME.format(k)
-                else: name = json.loads(urllib.request.urlopen(f'{base}/latest.json', timeout=30).read().decode())['file']
+                else: name = json.loads(_open(f'{base}/latest.json', 30).read().decode())['file']
                 _fetch(base, name, d)
                 out.append(f'downloaded the ready-made tools ({"built for this porter" if how == "exact" else "newest build; none was made for porter sources " + k})')
                 break
