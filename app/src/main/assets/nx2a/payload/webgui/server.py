@@ -156,6 +156,19 @@ def start_job(argv, kind=''):
     return True
 
 
+def rm_tree(p):
+    """rmtree that also removes read-only files and folders (game extractions often are): the owner may delete them once it makes them writable. Returns the first error or ''."""
+    import shutil, stat
+    errs = []
+    def fix(func, path, exc_info):
+        try:
+            os.chmod(os.path.dirname(path) or '.', 0o700); os.chmod(path, 0o700) if not os.path.islink(path) else None
+            func(path)
+        except OSError as e: errs.append(f'{path}: {e}')
+    shutil.rmtree(p, onerror=fix)
+    return errs[0] if errs else ''
+
+
 def build_dirs():
     return [d for d in GAMES.glob('*/*_build') if d.is_dir() and not d.is_symlink()]
 
@@ -176,7 +189,7 @@ def clean_work(keep_paths=()):
     freed = 0
     for d in build_dirs():
         if any(str(k).startswith(str(d) + os.sep) for k in keep_paths if k): continue   # the output sits inside it: leave it alone
-        freed += dir_size(d); shutil.rmtree(d, ignore_errors=True)
+        freed += dir_size(d); rm_tree(d)
     return freed
 
 
@@ -200,7 +213,9 @@ def remove_paths(paths):
             out.append((s, 'part of the app: use Update / repair instead')); continue
         try:
             if p.is_symlink() or p.is_file(): p.unlink()
-            elif p.is_dir(): shutil.rmtree(p)
+            elif p.is_dir():
+                err = rm_tree(p)
+                if err: out.append((s, err)); continue
             else: out.append((s, 'not found')); continue
             out.append((s, 'ok'))
         except OSError as e: out.append((s, str(e)))
