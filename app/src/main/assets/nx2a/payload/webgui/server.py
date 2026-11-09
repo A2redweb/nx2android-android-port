@@ -60,8 +60,6 @@ def cfg():
 def job_env():
     """The base environment plus the .NET workaround the probe found, if any."""
     e = dict(ENV)
-    cur = dotnet_probe.saved()
-    if cur: e.update(cur)
     e.update(prebuilt.env())   # the CI-built .NET tools, when they are installed and start
     return e
 
@@ -108,10 +106,7 @@ def need_prebuilt():
 
 
 def need_dotnet():
-    if need_prebuilt(): return
-    try:
-        if dotnet_probe.find_dotnet() and dotnet_probe.saved() is None: dotnet_probe.tune()
-    except Exception as e: print('dotnet probe failed:', e, flush=True)
+    need_prebuilt()   # the standard .NET runtime does not start under proot on these phones; only the ready-made tools are used
 
 
 def need_porter():
@@ -148,8 +143,7 @@ def start_job(argv, kind=''):
         JOB['code'] = p.wait()
         if JOB['kind'] == 'tools' and JOB['code'] == 0:     # check right away that .NET starts on this phone
             try:
-                JOB['lines'].append('prebuilt .NET tools:'); JOB['lines'].extend('  ' + l for l in prebuilt.install())
-                if not prebuilt.active(): JOB['lines'].append('.NET check:'); JOB['lines'].extend('  ' + l for l in dotnet_probe.tune())
+                JOB['lines'].append('ready-made .NET tools:'); JOB['lines'].extend('  ' + l for l in prebuilt.install())
             except Exception as e: JOB['lines'].append(f'.NET check failed: {e}')
         JOB['done'] = True
     threading.Thread(target=pump, daemon=True).start()
