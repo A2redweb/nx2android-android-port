@@ -180,6 +180,33 @@ def clean_work(keep_paths=()):
     return freed
 
 
+PROTECTED = None
+
+
+def remove_paths(paths):
+    """Delete files and folders chosen in the file manager. Only under the private storage (/root), the internal storage (/sdcard) and SD cards (/storage/<id>); never the
+    storage roots, the porter, the tools or the app's own settings. A symlink is removed itself, never what it points to. Returns [(path, 'ok' | error)]."""
+    import shutil
+    global PROTECTED
+    if PROTECTED is None:
+        PROTECTED = {Path(x) for x in ('/', '/root', '/sdcard', '/storage', '/root/.config', '/root/games', '/root/prebuilt', '/root/.config/nx2android', '/nx2a')} | {REPO, REPO.parent}
+    out = []
+    for raw in paths:
+        p = Path(os.path.abspath(str(raw)))   # tidies .. and double slashes, does not follow a final symlink
+        s = str(p)
+        if not s.startswith(('/root/', '/sdcard/', '/storage/')) or p in PROTECTED or (s.startswith('/storage/') and (len(p.parts) < 4 or s.startswith(('/storage/emulated/0/Android', '/storage/self')) and len(p.parts) < 5)) or s in ('/storage/emulated/0', '/storage/emulated/legacy'):
+            out.append((s, 'not allowed')); continue
+        if any(p == q or q in p.parents for q in (REPO, Path('/root/prebuilt'), Path('/root/.config/nx2android'))):
+            out.append((s, 'part of the app: use Update / repair instead')); continue
+        try:
+            if p.is_symlink() or p.is_file(): p.unlink()
+            elif p.is_dir(): shutil.rmtree(p)
+            else: out.append((s, 'not found')); continue
+            out.append((s, 'ok'))
+        except OSError as e: out.append((s, str(e)))
+    return out
+
+
 def stage_folder(folder):
     """The porter builds next to the game folder and /sdcard cannot run programs: link the game files into internal storage."""
     p = Path(folder)
@@ -297,7 +324,7 @@ class H(BaseHTTPRequestHandler):
             p = Path(q.get('path', ['/sdcard'])[0])
             try:
                 items = sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
-                return self.j({'path': str(p), 'parent': str(p.parent), 'items': [{'n': x.name, 'd': x.is_dir()} for x in items if not x.name.startswith('.')][:500]})
+                return self.j({'path': str(p), 'parent': str(p.parent), 'items': [{'n': x.name, 'd': x.is_dir(), 's': (x.lstat().st_size if x.is_file() and not x.is_symlink() else None), 'l': x.is_symlink()} for x in items if not x.name.startswith('.') or q.get('hidden')][:1000]})
             except OSError as e: return self.j({'path': str(p), 'parent': str(p.parent), 'items': [], 'error': str(e)})
         if u.path == '/api/devices':
             out, err, _ = porter('devices', '--json')
@@ -351,6 +378,9 @@ class H(BaseHTTPRequestHandler):
             try: Path('/sdcard/Switch').mkdir(parents=True, exist_ok=True); Path('/sdcard/Switch/nx2android-dotnet-report.txt').write_text('\n'.join(rep))
             except OSError: pass
             return self.j({'report': rep, 'saved': dotnet_probe.saved()})
+        if u.path == '/api/rm':
+            if JOB['p'] and JOB['p'].poll() is None: return self.j({'error': 'a job is running: wait for it to finish'})
+            return self.j({'results': remove_paths(o.get('paths') or [])})
         if u.path == '/api/clean':
             if JOB['p'] and JOB['p'].poll() is None: return self.j({'error': 'a job is running'})
             return self.j({'freed': clean_work()})
