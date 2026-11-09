@@ -122,15 +122,24 @@ def porter(*args, timeout=120):
 
 
 def start_job(argv, kind=''):
-    if kind in ('port', 'tools', 'install'): need_porter()
-    if kind in ('port', 'tools'): need_dotnet()   # the ready-made .NET tools first: with them active the porter does not download the 1.5 GB .NET SDK
+    """Returns at once: the preparation (porter sources, ready-made .NET tools: downloads that can take minutes) runs in the job's own thread, so the screen never waits on it."""
     with LOCK:
-        if JOB['p'] and JOB['p'].poll() is None: return False
-        JOB.update(lines=[], done=False, code=None, kind=kind, stage='', frac=None, seq=JOB['seq'] + 1)
-        p = subprocess.Popen(argv, cwd=REPO, env=job_env(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace', start_new_session=True)
-        JOB['p'] = p
+        if (JOB['p'] and JOB['p'].poll() is None) or JOB.get('starting'): return False
+        JOB.update(lines=[], done=False, code=None, kind=kind, stage='preparing', frac=None, seq=JOB['seq'] + 1, starting=True)
 
-    def pump():
+    def run():
+        try:
+            if kind in ('port', 'tools', 'install'):
+                JOB['lines'].append('preparing: the porter...'); need_porter()
+            if kind in ('port', 'tools'):
+                JOB['lines'].append('preparing: the .NET tools...'); need_dotnet()   # the ready-made tools first: with them active the porter does not download the 1.5 GB .NET SDK
+            p = subprocess.Popen(argv, cwd=REPO, env=job_env(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace', start_new_session=True)
+        except Exception as e:
+            JOB['lines'].append(f'could not start: {e}'); JOB['code'] = 1; JOB['starting'] = False; JOB['done'] = True; return
+        JOB['p'] = p; JOB['starting'] = False
+        pump(p)
+
+    def pump(p):
         for ln in p.stdout:
             ln = ln.rstrip('\n'); JOB['lines'].append(ln)
             try:
@@ -152,7 +161,7 @@ def start_job(argv, kind=''):
                 JOB['lines'].append(f'Deleted the working files: {freed / 1e9:.1f} GB of the phone storage used by the app is free again. The APK and data are in the output folder.')
             except Exception as e: JOB['lines'].append(f'Could not delete the working files: {e}')
         JOB['done'] = True
-    threading.Thread(target=pump, daemon=True).start()
+    threading.Thread(target=run, daemon=True).start()
     return True
 
 
@@ -258,7 +267,20 @@ def stage_driver(path):
     return str(out)
 
 
+def check_game_folder(folder):
+    folder = (folder or '').strip()
+    if not folder: raise ValueError('Choose the game folder first (Port tab, Browse).')
+    p = Path(folder)
+    if not p.is_dir():
+        hint = ' The SD card needs the newest APK (Releases, latest) so the app can see it.' if folder.startswith('/storage/') and not folder.startswith('/storage/emulated') else ''
+        raise ValueError(f'Folder not found: {folder}.{hint}')
+    if not any(f.suffix.lower() in GAME_EXT for f in p.iterdir() if f.is_file() or f.is_symlink()):
+        raise ValueError(f'No game files (.nsp .xci .nsz .xcz) directly inside {folder}. Pick the folder that holds them, not a folder above it.')
+    return folder
+
+
 def build_port_args(o):
+    o = dict(o, folder=check_game_folder(o.get('folder')))
     a = ['port', stage_folder(o['folder']), '--progress', 'json']
     out = o.get('out') or ('' if cfg().get('out') else DEFAULT_OUT)
     if out: a += ['-o', out]
@@ -394,10 +416,10 @@ class H(BaseHTTPRequestHandler):
             except OSError: pass
             return self.j({'report': rep, 'saved': dotnet_probe.saved()})
         if u.path == '/api/rm':
-            if JOB['p'] and JOB['p'].poll() is None: return self.j({'error': 'a job is running: wait for it to finish'})
+            if (JOB['p'] and JOB['p'].poll() is None) or JOB.get('starting'): return self.j({'error': 'a job is running: wait for it to finish'})
             return self.j({'results': remove_paths(o.get('paths') or [])})
         if u.path == '/api/clean':
-            if JOB['p'] and JOB['p'].poll() is None: return self.j({'error': 'a job is running'})
+            if (JOB['p'] and JOB['p'].poll() is None) or JOB.get('starting'): return self.j({'error': 'a job is running'})
             return self.j({'freed': clean_work()})
         if u.path == '/api/prebuilt':
             need_porter(); rep = prebuilt.install()
