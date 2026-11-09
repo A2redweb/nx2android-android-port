@@ -15,7 +15,7 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
 .ck{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}.ck:last-child{border:0}.dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex:none}.ok{background:var(--ok)}.no{background:var(--red)}.opt{background:#777}
 .sm{color:var(--mut);font-size:12px;word-break:break-all}pre{background:#08080a;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:46vh;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-all}
 .bar{height:8px;background:#101014;border-radius:6px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--red);width:0}
-#fmodal{position:fixed;inset:0;background:#000c;display:none;padding:14px;overflow:auto;z-index:5}#fmodal .card{max-width:720px;margin:auto}#fmodal .li{display:flex;gap:8px;align-items:center}#fmodal .li .nm{flex:1;word-break:break-all}#fmodal .sz{color:var(--mut,#999);font-size:12px;white-space:nowrap}#modal{position:fixed;inset:0;background:#000c;display:none;padding:14px;overflow:auto}#modal .card{max-width:720px;margin:auto}.li{padding:10px;border-bottom:1px solid var(--line)}
+#dlg{position:fixed;inset:0;background:#000d;display:none;padding:14px;overflow:auto;z-index:9;align-items:center}#dlg .card{max-width:560px;margin:auto;width:100%}#fmodal{position:fixed;inset:0;background:#000c;display:none;padding:14px;overflow:auto;z-index:5}#fmodal .card{max-width:720px;margin:auto}#fmodal .li{display:flex;gap:8px;align-items:center}#fmodal .li .nm{flex:1;word-break:break-all}#fmodal .sz{color:var(--mut,#999);font-size:12px;white-space:nowrap}#modal{position:fixed;inset:0;background:#000c;display:none;padding:14px;overflow:auto}#modal .card{max-width:720px;margin:auto}.li{padding:10px;border-bottom:1px solid var(--line)}
 </style></head><body>
 <header><b class="t"><i>nx2</i>android</b><span id="ver"></span><button onclick="checkUpdate()">Update</button><button id="quit" onclick="quit()" style="display:none">Quit</button></header>
 <div id="ban">An update is ready. <button onclick="restart()">Restart to apply</button></div>
@@ -60,6 +60,7 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
 <section id="log"><div class="card"><div id="stage" class="sm">idle</div><div class="bar"><i id="pb"></i></div>
  <div class="row"><button class="b g" onclick="cancel()">Cancel</button><button class="b g" onclick="copyLog()">Copy log</button></div></div><pre id="out"></pre></section>
 </main>
+<div id="dlg"><div class="card"><div id="dlgmsg" style="white-space:pre-wrap"></div><div class="row" style="margin-top:12px"><button class="b" id="dlgok">OK</button><button class="b g" id="dlgno">Cancel</button></div></div></div>
 <div id="fmodal"><div class="card"><div id="fplaces" class="row" style="flex-wrap:wrap"></div><div id="fpath" class="sm"></div><div id="flist"></div><div class="row"><button class="b g" onclick="fmAll()">Select all</button><button class="b" onclick="fmDel()">Delete selected</button><button class="b g" onclick="fmodal.style.display='none'">Close</button></div><div id="fmsg" class="sm"></div></div></div>
 <div id="modal"><div class="card"><div class="row" id="mnative" style="display:none"><button class="b" id="mnb" style="width:100%">Use Android file picker (SD card, USB…)</button></div><div id="mplaces" class="row" style="flex-wrap:wrap"></div><div id="mpath" class="sm"></div><div id="mlist"></div><div class="row"><button class="b" id="msel">Use this folder</button><button class="b g" onclick="modal.style.display='none'">Close</button></div></div></div>
 <script>
@@ -84,7 +85,10 @@ function drvKey(){return 'drv:'+($('folder').value||'').trim()}
 function drvLoad(){try{$('vkdriver').value=localStorage.getItem(drvKey())||''}catch(e){}}
 function drvSave(){try{const v=$('vkdriver').value.trim();if(v)localStorage.setItem(drvKey(),v);else localStorage.removeItem(drvKey())}catch(e){}}
 async function workInfo(){const r=await api('/api/work');$('workinfo').textContent=(r.bytes/1e9).toFixed(1)+' GB of working files from '+r.dirs.length+' port(s)'+(r.dirs.length?': '+r.dirs.join(', '):'')}
-async function cleanWork(){if(!confirm('Delete the working files of finished and failed ports? The APK and data in the output folder stay. Porting the same game again starts from scratch.'))return;const r=await api('/api/clean',{});$('workinfo').textContent=r.error||('Freed '+(r.freed/1e9).toFixed(1)+' GB')}
+async function cleanWork(){if(!await ask('Delete the working files of finished and failed ports? The APK and data in the output folder stay. Porting the same game again starts from scratch.','Delete'))return;$('workinfo').textContent='deleting…';try{const r=await api('/api/clean',{});$('workinfo').textContent=r.error||('Freed '+(r.freed/1e9).toFixed(1)+' GB')}catch(e){$('workinfo').textContent='Delete failed: '+e}}
+function ask(msg,yes,noBtn){return new Promise(res=>{$('dlgmsg').textContent=msg;$('dlgok').textContent=yes||'OK';$('dlgno').style.display=noBtn===false?'none':'';
+ const d=$('dlg');d.style.display='flex';const done=v=>{d.style.display='none';res(v)};$('dlgok').onclick=()=>done(true);$('dlgno').onclick=()=>done(false)})}
+window.alert=m=>{ask(String(m),'OK',false)};
 let fmCur='/root';
 const hsz=n=>n==null?'':n>=1e9?(n/1e9).toFixed(1)+' GB':n>=1e6?(n/1e6).toFixed(1)+' MB':n>=1e3?(n/1e3).toFixed(0)+' KB':n+' B';
 async function fm(path){fmCur=path||fmCur;const r=await api('/api/ls?path='+encodeURIComponent(fmCur)+'&hidden=1');const v=await api('/api/ls?path=/storage');
@@ -97,7 +101,7 @@ async function fm(path){fmCur=path||fmCur;const r=await api('/api/ls?path='+enco
  $('flist').querySelectorAll('[data-p]').forEach(e=>e.onclick=()=>{if(e.dataset.d=='true')fm(e.dataset.p)});fmodal.style.display='block'}
 function fmAll(){const c=[...$('flist').querySelectorAll('[data-c]')];const on=c.some(x=>!x.checked);c.forEach(x=>x.checked=on)}
 async function fmDel(){const sel=[...$('flist').querySelectorAll('[data-c]:checked')].map(x=>x.dataset.c);if(!sel.length){$('fmsg').textContent='Nothing selected';return}
- if(!confirm('Delete '+sel.length+' item(s) for good?\n\n'+sel.slice(0,8).map(p=>p.split('/').pop()).join('\n')+(sel.length>8?'\n…':'')))return;
+ if(!await ask('Delete '+sel.length+' item(s) for good?\n\n'+sel.slice(0,8).map(p=>p.split('/').pop()).join('\n')+(sel.length>8?'\n…':''),'Delete'))return;
  $('fmsg').textContent='deleting…';const r=await api('/api/rm',{paths:sel});if(r.error){$('fmsg').textContent=r.error;return}
  const bad=r.results.filter(x=>x[1]!='ok');await fm(fmCur);$('fmsg').textContent=(r.results.length-bad.length)+' deleted'+(bad.length?'; '+bad.map(x=>x[0].split('/').pop()+': '+x[1]).join('; '):'')}
 async function port(){drvSave();const o={folder:$('folder').value,app_name:$('app_name').value,package:$('package').value,jobs:$('jobs').value,vulkan_driver:$('vkdriver').value,keep_work:$('keep_work').checked};['touch','fps60','experimental','install','replace_signer'].forEach(k=>o[k]=$(k).checked);

@@ -1,5 +1,5 @@
 {
- "version": 45,
+ "version": 47,
  "setup": 3,
  "porter_sha": "468937822219a56eb81da1aa2e40f05e8c453af2",
  "files": {
@@ -11,7 +11,7 @@
   "prebuilt.py": "b12ea35546333547930dac17203f57b9d7f33f7c031c2a8c839033ceb5ff3129",
   "prebuilt_key.py": "7b15021b38f7fcecf4a7d6e016a4a0aaa21c77d8b33dc375338b53fb423999e5",
   "server_state.py": "43eb08dbb456841f78cb56efc902a6642412b07431ae36fc61e4abbe78884802",
-  "webgui/index.html": "1f76ab8a262073665868cfffc251e1e1277e092cc82891f758470aa4242e4d06",
+  "webgui/index.html": "212aad6f4730e04e7f9eb7fb2c261c11de0774794241609f7262e3e70987b48b",
   "webgui/server.py": "1322d4dfd315a9b6a22f43b52ac49db8bddd9f080241de29930fc8b12ec2b798"
  },
  "porter_track": "main"
