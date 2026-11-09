@@ -39,6 +39,7 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
  <div class="chk"><input type="checkbox" id="experimental"><span>Experimental (game not ported yet, may not start)</span></div>
  <div class="chk"><input type="checkbox" id="install"><span>Install with adb when done (needs the Device tab)</span></div>
  <div class="chk"><input type="checkbox" id="replace_signer"><span>Replace an app signed with another key (deletes its saves)</span></div>
+ <label>Custom Vulkan driver (optional): path to a Turnip/Mesa .so (or a .zip that holds one)</label><input type="text" id="vkdriver" placeholder="/sdcard/Switch/Drivers/libvulkan_freedreno.so">
  <label>Build jobs (lower uses less RAM)</label><input type="number" id="jobs" value="3" min="1" max="8">
  <button class="b" onclick="port()">Port</button></div>
  <div class="card" id="fin"><b>Finish</b><div class="sm">Install the APK, then copy the game data.</div>
@@ -75,8 +76,8 @@ async function loadCfg(){const c=await api('/api/config');$('keys').value=c.keys
 async function saveCfg(){const a=await api('/api/config',{key:'keys',value:$('keys').value});const b=await api('/api/config',{key:'out',value:$('outcfg').value});$('cfgmsg').textContent=(a.ok&&b.ok)?'saved':(a.msg||b.msg);doctor()}
 async function tools(){await api('/api/tools',{});tab('log');poll(true)}
 async function inspect(){$('insp').textContent='reading…';const r=await api('/api/inspect',{folder:$('folder').value});$('insp').textContent=JSON.stringify(r,null,1).slice(0,1500)}
-async function port(){const o={folder:$('folder').value,app_name:$('app_name').value,package:$('package').value,jobs:$('jobs').value};['touch','fps60','experimental','install','replace_signer'].forEach(k=>o[k]=$(k).checked);
- const r=await api('/api/port',o);if(!r.started)alert('A job is already running');tab('log');poll(true)}
+async function port(){const o={folder:$('folder').value,app_name:$('app_name').value,package:$('package').value,jobs:$('jobs').value,vulkan_driver:$('vkdriver').value};['touch','fps60','experimental','install','replace_signer'].forEach(k=>o[k]=$(k).checked);
+ const r=await api('/api/port',o);if(r.error)return alert(r.error);if(!r.started)alert('A job is already running');tab('log');poll(true)}
 function installApk(){const p=$('apkpath').value;if(!p)return alert('Port a game first, or type the APK path');if(window.NX2A)NX2A.installApk(p);else alert('Open the APK from your file manager: '+p)}
 async function cancel(){await api('/api/cancel',{})}
 async function adb(op){const host=op=='pair'?$('phost').value:$('chost').value;const r=await api('/api/adb',{op,host,code:$('pcode').value});$('adbout').textContent=r.out}
