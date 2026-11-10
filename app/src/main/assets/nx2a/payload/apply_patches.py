@@ -177,6 +177,16 @@ patch('device glslc capture', 'porter/pipeline.py', 'NX2A_GLSLC', [
     # ---- Unreal Engine shader code archives decoded with the game's own Oodle on the device"""),
 ])
 
+# 5b. the null graphics backend does not link as a program: gl_android.c (always compiled) calls two Vulkan present functions that only the Vulkan backend defines
+patch('null graphics link', 'nxnative/dm/android/gfx_null.c', 'NX2A_NULLSTUB', [
+("""int mtl_has_window(void) { return 0; }
+""", """int mtl_has_window(void) { return 0; }
+// NX2A_NULLSTUB: gl_android.c's EGL present path names these; a null-graphics program never presents
+void *vk_image_from_ahb(void *ahb, uint32_t w, uint32_t h) { (void)ahb; (void)w; (void)h; return 0; }
+uint64_t vk_present_vkimg(void *im, double period) { (void)im; (void)period; return 0; }
+"""),
+])
+
 # 6. when the on-device host fails, keep its whole output (the grep for two words left nothing to read for exit 139)
 patch('device host log', 'porter/pipeline.py', "tail -n 30 job.log'", [
 ("""echo "exit $?"; grep -a -e DM_OODLE_JOB -e RED job.log | tail -5'""", """echo "exit $?"; tail -n 30 job.log'"""),
