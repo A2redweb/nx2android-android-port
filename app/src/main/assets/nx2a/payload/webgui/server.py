@@ -159,7 +159,9 @@ def start_job(argv, kind=''):
                 txt = '\n'.join(l for l in JOB['lines'] if l.startswith('{"ev": "say"'))
                 if JOB.get('fps60') and JOB['code'] == 0 and ('keeps its own frame rate' in txt or 'cannot be applied' in txt):
                     JOB['lines'].append('NOTE: 60 fps was NOT applied to this port: there is no community 60 fps config (FPSLocker-Warehouse) for this exact game version, or it could not be used. The game keeps its own frame rate (see the "60 fps" line above).')
-                if 'Oodle' in txt and JOB['code'] != 0:
+                if ('Oodle' in txt or 'GLSLC' in txt) and JOB['code'] != 0 and ('to push' in txt or 'exit 139' in '\n'.join(JOB['lines'])):
+                    JOB['lines'].append('HINT: adb is connected (the game was sent to the phone) but the game crashed there. Send the last lines above. If a line says "[RED] main build ... is not the tested ..." the port used a game version the profile has no fixes for: put the game\'s update NSP (the version named after "tested on") in the same folder as the base game and port again.')
+                elif ('Oodle' in txt or 'GLSLC' in txt) and JOB['code'] != 0:
                     JOB['lines'].append('HINT: this game\'s shaders need a device connected over adb. Device tab: pair (Settings > Developer options > Wireless debugging > Pair with code), connect, List devices; then port again.')
             except Exception: pass
         if JOB['kind'] == 'port' and JOB['code'] == 0 and not JOB.get('keep'):

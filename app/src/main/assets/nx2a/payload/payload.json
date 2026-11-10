@@ -1,9 +1,9 @@
 {
- "version": 55,
+ "version": 57,
  "setup": 3,
  "porter_sha": "468937822219a56eb81da1aa2e40f05e8c453af2",
  "files": {
-  "apply_patches.py": "de3097a4078513f4be08fec22dcf688c127756cc0aba19355118de24eaf07656",
+  "apply_patches.py": "5cf350ff6a107e07d41ba24debbdba1b78f904550ce3367d6b46f50c6b94f882",
   "dotnet_probe.py": "866983eb4aa53b567bf69e6574a93b00e315c2a85a2c536e95a123b9ded3e53a",
   "fast_tools.py": "665af40effe497d679cef624e0a0da81874900aa43e9fbfef07d172d7cc32070",
   "inner_setup.sh": "413d6980c1c0c129e90cb1892351dfc7a504b6a3919f78091703e4aba54cdd8c",
@@ -12,7 +12,7 @@
   "prebuilt_key.py": "7b15021b38f7fcecf4a7d6e016a4a0aaa21c77d8b33dc375338b53fb423999e5",
   "server_state.py": "43eb08dbb456841f78cb56efc902a6642412b07431ae36fc61e4abbe78884802",
   "webgui/index.html": "7f611d17a95ee5110da7077992861899dd35d5f0c73f9a494f2bf6300ed0b5ea",
-  "webgui/server.py": "afc314655bb65c3d0e076b3f145ac7772becaf6b7a78d861e861e5f4f48e3ede"
+  "webgui/server.py": "d837b48057b0c37d886a6198c17eaafc920875d3fb79822eecd09be5cbed4b25"
  },
  "porter_track": "main"
 }
