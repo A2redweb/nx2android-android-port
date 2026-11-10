@@ -35,14 +35,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash tools/make_prebuilt.sh
   apk:
+    # not on the 6-hourly schedule (that only refreshes the .NET tools)
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Does the APK need rebuilding?
+        id: chg
+        run: |
+          # payload files update the app by themselves (no new APK): rebuild only when something else changed, or when started by hand
+          build=true
+          if [ "${{ github.event_name }}" = "push" ] && git cat-file -e "${{ github.event.before }}^{commit}" 2>/dev/null; then
+            other=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep -Ev '^(app/src/main/assets/nx2a/payload/|docs/|README\.md$|tools/make_prebuilt\.sh$|\.github/workflows/)' || true)
+            [ -z "$other" ] && build=false
+            echo "changed outside the payload: ${other:-nothing}"
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@v4
+        if: steps.chg.outputs.build == 'true'
         with: { distribution: temurin, java-version: '17' }
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.chg.outputs.build == 'true'
         with: { gradle-version: '8.10.2' }
       - name: Bundle proot and the Ubuntu rootfs
+        if: steps.chg.outputs.build == 'true'
         run: |
           bash tools/fetch_proot.sh
           bash tools/fetch_rootfs.sh
@@ -51,6 +68,7 @@ jobs:
           python3 tools/make_manifest.py
           git diff --exit-code app/src/main/assets/nx2a/payload/payload.json || { echo "payload.json is out of date: run  python3 tools/make_manifest.py --bump  and commit"; exit 1; }
       - name: Signing key
+        if: steps.chg.outputs.build == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           KS_B64: ${{ secrets.KEYSTORE_B64 }}
@@ -64,13 +82,15 @@ jobs:
             bash tools/signing_key.sh
           fi
       - name: Build the signed release APK
+        if: steps.chg.outputs.build == 'true'
         run: |
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
           gradle --no-daemon assembleRelease
       - uses: actions/upload-artifact@v4
+        if: steps.chg.outputs.build == 'true'
         with: { name: nx2android-apk, path: 'app/build/outputs/apk/release/*.apk' }
       - name: Publish the APK as the latest release
-        if: github.event_name != 'pull_request'
+        if: steps.chg.outputs.build == 'true' && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
