@@ -67,7 +67,11 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
 const $=id=>document.getElementById(id),modal=$('modal'),fmodal=$('fmodal');let since=0,timer=null,raw=[];
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>tab(b.dataset.t));
 function tab(t){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==t));document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id==t))}
-async function api(p,o){const r=await fetch(p,o?{method:'POST',body:JSON.stringify(o)}:{});return r.json()}
+let sessWarned=false;
+async function api(p,o){let last;for(let i=0;i<4;i++){try{const r=await fetch(p,o?{method:'POST',body:JSON.stringify(o)}:{});
+ if(r.status==403){if(!sessWarned){sessWarned=true;alert('The app session has changed (the app was restarted or updated). Close nx2android completely and open it again.')}throw new Error('forbidden')}
+ return await r.json()}catch(e){last=e;if(String(e.message)=='forbidden')break;await new Promise(s=>setTimeout(s,1500*(i+1)))}}
+ throw last}
 if(window.NX2A)$('quit').style.display='';
 function quit(){if(window.NX2A)NX2A.quit()}
 async function prebuiltTools(){const o=$('dnout');o.style.display='block';o.textContent='downloading and testing the ready-made tools…';const r=await api('/api/prebuilt',{});o.textContent=r.report.join('\n')+'\n\n'+r.state}
