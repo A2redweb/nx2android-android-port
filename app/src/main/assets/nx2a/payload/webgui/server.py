@@ -237,6 +237,8 @@ def stage_folder(folder):
     if not str(p).startswith(('/sdcard', '/storage')): return str(p)
     slug = re.sub(r'[^A-Za-z0-9._-]+', '_', p.name) or 'game'
     d = GAMES / slug; d.mkdir(parents=True, exist_ok=True)
+    for old in d.iterdir():   # links left by an earlier port of this folder: the game files may have been moved or deleted since, and a dangling link crashes the porter
+        if old.is_symlink() and old.suffix.lower() in GAME_EXT: old.unlink()
     for f in p.iterdir():
         if f.suffix.lower() in GAME_EXT:
             t = d / f.name
