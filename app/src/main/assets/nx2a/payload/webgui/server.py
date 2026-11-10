@@ -154,6 +154,14 @@ def start_job(argv, kind=''):
             try:
                 JOB['lines'].append('ready-made .NET tools:'); JOB['lines'].extend('  ' + l for l in prebuilt.install())
             except Exception as e: JOB['lines'].append(f'.NET check failed: {e}')
+        if JOB['kind'] == 'port':
+            try:
+                txt = '\n'.join(l for l in JOB['lines'] if l.startswith('{"ev": "say"'))
+                if JOB.get('fps60') and JOB['code'] == 0 and ('keeps its own frame rate' in txt or 'cannot be applied' in txt):
+                    JOB['lines'].append('NOTE: 60 fps was NOT applied to this port: there is no community 60 fps config (FPSLocker-Warehouse) for this exact game version, or it could not be used. The game keeps its own frame rate (see the "60 fps" line above).')
+                if 'Oodle' in txt and JOB['code'] != 0:
+                    JOB['lines'].append('HINT: this game\'s shaders need a device connected over adb. Device tab: pair (Settings > Developer options > Wireless debugging > Pair with code), connect, List devices; then port again.')
+            except Exception: pass
         if JOB['kind'] == 'port' and JOB['code'] == 0 and not JOB.get('keep'):
             try:
                 res = next((json.loads(l) for l in reversed(JOB['lines']) if l.startswith('{"ev": "result"')), {})
@@ -388,7 +396,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/port':
             try: args = build_port_args(o)
             except (ValueError, OSError, Exception) as e: return self.j({'started': False, 'error': str(e)})
-            JOB['keep'] = bool(o.get('keep_work'))
+            JOB['keep'] = bool(o.get('keep_work')); JOB['fps60'] = bool(o.get('fps60'))
             return self.j({'started': start_job([sys.executable, '-m', 'porter', *args], 'port')})
         if u.path == '/api/install':
             a = ['install', o['data'], '--progress', 'json'] + (['--replace-signer'] if o.get('replace_signer') else [])
