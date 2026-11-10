@@ -187,6 +187,15 @@ uint64_t vk_present_vkimg(void *im, double period) { (void)im; (void)period; ret
 """),
 ])
 
+# 5c. a LINKDATA DATA1.bin with no bytes (Three Houses: one of the DLC / patch folders) made the split's mmap fail ("cannot mmap an empty file") and stopped the whole port: skip it, say which
+patch('empty linkdata', 'nxnative/dm/gfx/tools/shader_split.py', 'NX2A_EMPTYDATA', [
+("""    if os.path.basename(path) != 'DATA1.bin' or not os.path.exists(idx): return None
+""", """    if os.path.basename(path) != 'DATA1.bin' or not os.path.exists(idx): return None
+    if os.path.getsize(path) == 0:   # NX2A_EMPTYDATA
+        print(f'shader split: {rel} is empty (a LINKDATA archive without data): skipped', file=sys.stderr); return None
+"""),
+])
+
 # 6. when the on-device host fails, keep its whole output (the grep for two words left nothing to read for exit 139)
 patch('device host log', 'porter/pipeline.py', "tail -n 30 job.log'", [
 ("""echo "exit $?"; grep -a -e DM_OODLE_JOB -e RED job.log | tail -5'""", """echo "exit $?"; tail -n 30 job.log'"""),

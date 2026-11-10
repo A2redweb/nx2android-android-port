@@ -1,9 +1,9 @@
 {
- "version": 59,
+ "version": 61,
  "setup": 3,
  "porter_sha": "468937822219a56eb81da1aa2e40f05e8c453af2",
  "files": {
-  "apply_patches.py": "5afe23b8cd40217e9563597e9eedb6a4baf2a86ec2c15799a360ec8c4fa304c4",
+  "apply_patches.py": "22af83d5ca98f14db3c49bdd09d3bfea705e4d96b9185878b63c64d60cec7266",
   "dotnet_probe.py": "866983eb4aa53b567bf69e6574a93b00e315c2a85a2c536e95a123b9ded3e53a",
   "fast_tools.py": "665af40effe497d679cef624e0a0da81874900aa43e9fbfef07d172d7cc32070",
   "inner_setup.sh": "413d6980c1c0c129e90cb1892351dfc7a504b6a3919f78091703e4aba54cdd8c",
