@@ -48,8 +48,9 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
  <div class="card" id="fin"><b>Finish</b><div class="sm">Install the APK, then copy the game data.</div>
  <label>APK</label><input type="text" id="apkpath" placeholder="/sdcard/Switch/Ports/Game.apk">
  <label>Data folder</label><input type="text" id="datapath" placeholder="/sdcard/Switch/Ports/Game-data">
- <div class="row"><button class="b g" onclick="installApk()">Install APK</button></div>
- <div class="sm" style="margin-top:8px">Then the data folder above must be copied by hand to <b>Android/data/&lt;package&gt;/files</b> (Android does not let apps do it). Instructions for rooted phones and for Shizuku:<br><a href="https://github.com/A2redweb/nx2android-android-port/blob/main/docs/COPY_DATA.md" target="_blank" rel="noopener">github.com/A2redweb/nx2android-android-port/blob/main/docs/COPY_DATA.md</a></div></div>
+ <div class="row"><button class="b g" onclick="installApk()">Install APK</button><button class="b" id="cpbtn" onclick="copyData()" disabled>Copy data</button></div>
+ <div class="sm" id="cpnote">Copy data is locked: it needs adb. Open the Device tab, pair and connect (wireless debugging), then it unlocks. </div>
+ <div class="sm" style="margin-top:8px">Without adb the data folder above must be copied by hand to <b>Android/data/&lt;package&gt;/files</b> (Android does not let apps do it). Instructions for rooted phones and for Shizuku:<br><a href="https://github.com/A2redweb/nx2android-android-port/blob/main/docs/COPY_DATA.md" target="_blank" rel="noopener">github.com/A2redweb/nx2android-android-port/blob/main/docs/COPY_DATA.md</a></div></div>
 </section>
 <section id="device">
  <div class="card"><div class="sm">Optional. Only needed for "Install with adb" or if copying data is blocked on your Android. Settings → Developer options → Wireless debugging → Pair device with pairing code.</div>
@@ -112,8 +113,11 @@ async function port(){drvSave();const o={folder:$('folder').value,app_name:$('ap
  const r=await api('/api/port',o);if(r.error)return alert(r.error);if(!r.started)alert('A job is already running');tab('log');poll(true)}
 function installApk(){const p=$('apkpath').value;if(!p)return alert('Port a game first, or type the APK path');if(window.NX2A)NX2A.installApk(p);else alert('Open the APK from your file manager: '+p)}
 async function cancel(){await api('/api/cancel',{})}
-async function adb(op){const host=op=='pair'?$('phost').value:$('chost').value;const r=await api('/api/adb',{op,host,code:$('pcode').value});$('adbout').textContent=r.out}
-async function devs(){const r=await api('/api/devices');$('adbout').textContent=JSON.stringify(r.devices||r.error,null,1)}
+async function adbCheck(){try{const r=await api('/api/devices');const ok=!!(r&&r.ready);$('cpbtn').disabled=!ok;$('cpnote').textContent=ok?'adb is connected: Copy data installs the APK if it is not on the phone yet, then copies the game data into Android/data. Large games take several minutes.':'Copy data is locked: it needs adb. Open the Device tab, pair and connect (wireless debugging), then it unlocks. Without adb, copy the data by hand (see docs/COPY_DATA.md in the repo).'}catch(e){}}
+async function copyData(){const d=$('datapath').value;if(!d)return alert('Port a game first, or type the data folder path');const r=await api('/api/install',{data:d,apk:$('apkpath').value});if(!r.started){return alert(r.error||'Could not start. Is another job running?')}tab('log');poll(true)}
+setInterval(adbCheck,15000);setTimeout(adbCheck,1500);
+async function adb(op){const host=op=='pair'?$('phost').value:$('chost').value;const r=await api('/api/adb',{op,host,code:$('pcode').value});$('adbout').textContent=r.out;adbCheck()}
+async function devs(){const r=await api('/api/devices');$('adbout').textContent=JSON.stringify(r.devices||r.error,null,1);adbCheck()}
 function poll(reset){if(reset){since=0;raw=[];$('out').textContent='';$('pb').style.width='0'}clearInterval(timer);timer=setInterval(tick,1000);tick()}
 async function tick(){const r=await api('/api/job?since='+since);since=r.next;
  for(const ln of r.lines){raw.push(ln);let ev=null;try{ev=JSON.parse(ln)}catch(e){}

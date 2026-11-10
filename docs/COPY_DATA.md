@@ -1,5 +1,7 @@
 # Copying the game data to `Android/data`
 
+Easiest: in the app, pair wireless debugging (Device tab) and tap **Copy data**. The rest of this page is for copying without adb.
+
 The app builds two things for each game: the **APK** and a **data folder** (for example `/sdcard/Switch/Ports/Dark_Souls-data`).
 The APK installs from the app. The data folder has to go to
 

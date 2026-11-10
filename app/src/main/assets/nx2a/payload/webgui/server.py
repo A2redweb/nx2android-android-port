@@ -121,6 +121,14 @@ def porter(*args, timeout=120):
     return r.stdout, r.stderr, r.returncode
 
 
+def adb_ready():
+    """True when adb lists a device that is ready (wireless debugging to this phone is connected)."""
+    try:
+        out, _, _ = porter('devices', '--json', timeout=40)
+        return any(d.get('state') == 'device' for d in json.loads(out))
+    except (ValueError, OSError, subprocess.TimeoutExpired, AttributeError): return False
+
+
 def start_job(argv, kind=''):
     """Returns at once: the preparation (porter sources, ready-made .NET tools: downloads that can take minutes) runs in the job's own thread, so the screen never waits on it."""
     with LOCK:
@@ -377,7 +385,7 @@ class H(BaseHTTPRequestHandler):
             except OSError as e: return self.j({'path': str(p), 'parent': str(p.parent), 'items': [], 'error': str(e)})
         if u.path == '/api/devices':
             out, err, _ = porter('devices', '--json')
-            try: return self.j({'devices': json.loads(out)})
+            try: devs = json.loads(out); return self.j({'devices': devs, 'ready': any(d.get('state') == 'device' for d in devs)})
             except ValueError: return self.j({'devices': [], 'error': (err or out)[-300:]})
         self.send('not found', 'text/plain', 404)
 
@@ -400,8 +408,9 @@ class H(BaseHTTPRequestHandler):
             except (ValueError, OSError, Exception) as e: return self.j({'started': False, 'error': str(e)})
             JOB['keep'] = bool(o.get('keep_work')); JOB['fps60'] = bool(o.get('fps60'))
             return self.j({'started': start_job([sys.executable, '-m', 'porter', *args], 'port')})
-        if u.path == '/api/install':
-            a = ['install', o['data'], '--progress', 'json'] + (['--replace-signer'] if o.get('replace_signer') else [])
+        if u.path == '/api/install':   # the game data (and the APK, if it is not on the phone yet) over adb: the one way Android lets this app put files into Android/data
+            if not adb_ready(): return self.j({'started': False, 'error': 'No adb device is connected. Open the Device tab: pair, connect, List devices, then try again.'})
+            a = ['install', o['data']] + (['--apk', o['apk']] if o.get('apk') else []) + ['--progress', 'json'] + (['--replace-signer'] if o.get('replace_signer') else [])
             return self.j({'started': start_job([sys.executable, '-m', 'porter', *a], 'install')})
         if u.path == '/api/adb':   # wireless debugging to this same phone (optional)
             if o.get('op') not in ('pair', 'connect', 'disconnect'): return self.j({'out': 'bad operation'})
