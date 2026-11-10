@@ -121,6 +121,14 @@ def porter(*args, timeout=120):
     return r.stdout, r.stderr, r.returncode
 
 
+def norm_path(p):
+    """/storage/emulated/0/x and /storage/self/primary/x are /sdcard/x here: the Android file picker and file managers show the first, but only /sdcard is visible inside the app's Ubuntu."""
+    if isinstance(p, str):
+        for pre in ('/storage/emulated/0', '/storage/self/primary', '/mnt/sdcard', '/sdcard0'):
+            if p == pre or p.startswith(pre + '/'): return '/sdcard' + p[len(pre):]
+    return p
+
+
 def adb_ready():
     """True when adb lists a device that is ready (wireless debugging to this phone is connected)."""
     try:
@@ -378,7 +386,7 @@ class H(BaseHTTPRequestHandler):
             since = int(q.get('since', ['0'])[0])
             return self.j({'lines': JOB['lines'][since:], 'next': len(JOB['lines']), 'done': JOB['done'], 'code': JOB['code']})
         if u.path == '/api/ls':
-            p = Path(q.get('path', ['/sdcard'])[0])
+            p = Path(norm_path(q.get('path', ['/sdcard'])[0]))
             try:
                 items = sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
                 return self.j({'path': str(p), 'parent': str(p.parent), 'items': [{'n': x.name, 'd': x.is_dir(), 's': (x.lstat().st_size if x.is_file() and not x.is_symlink() else None), 'l': x.is_symlink()} for x in items if not x.name.startswith('.') or q.get('hidden')][:1000]})
@@ -395,6 +403,9 @@ class H(BaseHTTPRequestHandler):
         n = int(self.headers.get('Content-Length') or 0)
         try: o = json.loads(self.rfile.read(n) or b'{}')
         except ValueError: return self.j({'error': 'bad json'}, 400)
+        for k in ('data', 'apk', 'folder', 'vulkan_driver', 'out', 'path'):
+            if k in o: o[k] = norm_path(o[k])
+        if isinstance(o.get('paths'), list): o['paths'] = [norm_path(x) for x in o['paths']]
         if u.path == '/api/config':
             if o.get('key') not in ('keys', 'out'): return self.j({'ok': False, 'msg': 'unknown setting'})
             out, err, c = porter('config', o['key'], o['value']); return self.j({'ok': c == 0, 'msg': (err or out)[-300:]})
@@ -410,6 +421,9 @@ class H(BaseHTTPRequestHandler):
             return self.j({'started': start_job([sys.executable, '-m', 'porter', *args], 'port')})
         if u.path == '/api/install':   # the game data (and the APK, if it is not on the phone yet) over adb: the one way Android lets this app put files into Android/data
             if not adb_ready(): return self.j({'started': False, 'error': 'No adb device is connected. Open the Device tab: pair, connect, List devices, then try again.'})
+            d = Path(o.get('data') or '')
+            if not d.is_dir(): return self.j({'started': False, 'error': f'The data folder does not exist: {d}. Port the game first, or fix the path (it must be a folder like /sdcard/Switch/Ports/Game-data).'})
+            if not (d / 'nx2a-data.json').is_file(): return self.j({'started': False, 'error': f'{d} is not a finished data pack (nx2a-data.json is missing). Choose the folder that ends in -data next to the APK.'})
             a = ['install', o['data']] + (['--apk', o['apk']] if o.get('apk') else []) + ['--progress', 'json'] + (['--replace-signer'] if o.get('replace_signer') else [])
             return self.j({'started': start_job([sys.executable, '-m', 'porter', *a], 'install')})
         if u.path == '/api/adb':   # wireless debugging to this same phone (optional)
