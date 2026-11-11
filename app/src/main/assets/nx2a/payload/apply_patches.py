@@ -203,6 +203,12 @@ patch('survey census skipped', 'nxnative/scripts/build_ipa_from_nsp.py', 'NX2A_C
 """),
 ])
 
+# 5e. stripping the host library only makes it smaller: the Ubuntu strip could not read the library's architecture for Rune Factory (the build then stopped), so a failed strip is no longer an error
+patch('strip optional', 'nxnative/dm/android/build.py', 'NX2A_STRIPOPT', [
+("""if NX2A_ARM_HOST else str(bin_ / ('llvm-strip.exe' if os.name == 'nt' else 'llvm-strip')), '--strip-unneeded', str(out / 'libdmhost.so')], check=True)""",
+ """if NX2A_ARM_HOST else str(bin_ / ('llvm-strip.exe' if os.name == 'nt' else 'llvm-strip')), '--strip-unneeded', str(out / 'libdmhost.so')], check=False)  # NX2A_STRIPOPT"""),
+])
+
 # 6. when the on-device host fails, keep its whole output (the grep for two words left nothing to read for exit 139)
 patch('device host log', 'porter/pipeline.py', "tail -n 30 job.log'", [
 ("""echo "exit $?"; grep -a -e DM_OODLE_JOB -e RED job.log | tail -5'""", """echo "exit $?"; tail -n 30 job.log'"""),
