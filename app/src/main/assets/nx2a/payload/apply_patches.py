@@ -238,4 +238,24 @@ patch('zero-copy chunk size', 'nxnative/dm/android/gfx_vk_core.c', 'NX2A_ZCCHUNK
 """),
 ])
 
+# 5h. a buffer-to-buffer copy whose destination (or source) crosses the end of a zero-copy chunk found no buffer and was dropped ("buffer copy outside the memory pools"): in Three Houses
+# that copy is the lead's field model's vertex data, so the model drew garbage. Any chunk size has the same problem (the game packs its buffers back to back), so the copy is split at the chunk ends
+patch('copy across chunks', 'nxnative/dm/android/gfx_vk_core.c', 'NX2A_COPYSPLIT', [
+("""void mtl_sub_copy(uint64_t src, uint64_t dst, uint64_t n) {
+""", """static void mtl_sub_copy_one(uint64_t src, uint64_t dst, uint64_t n) {
+"""),
+("""void mtl_sub_fill(uint64_t dst, uint64_t n, uint32_t value) {
+""", """void mtl_sub_copy(uint64_t src, uint64_t dst, uint64_t n) {   // NX2A_COPYSPLIT: in pieces that each lie in one chunk of the source's pool and of the destination's
+    for (uint64_t done = 0; done < n;) {
+        uint64_t s = src + done, d = dst + done, m = n - done;
+        vkpool_t *ps = vk_pool_of(s, 1), *pd = vk_pool_of(d, 1);
+        if (ps && s + m > ps->hi) m = ps->hi - s;
+        if (pd && d + m > pd->hi) m = pd->hi - d;
+        mtl_sub_copy_one(s, d, m); done += m;
+    }
+}
+void mtl_sub_fill(uint64_t dst, uint64_t n, uint32_t value) {
+"""),
+])
+
 sys.exit(1 if failed else 0)

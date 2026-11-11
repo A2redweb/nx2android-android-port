@@ -1,5 +1,0 @@
-# Fire Emblem: Three Houses (this app's keys for an experimental port; never used once upstream has its own android.tsv)
-# The host cuts the game's 1.5 GB memory pool into 256 MB chunks and a 282,960-byte vertex buffer (the lead's field model) sits across a chunk's end ("[RED] [vk] ... ranges across two chunks of a
-# memory pool"), so that model draws garbage. 384 MB chunks put the chunk ends elsewhere (that buffer is then inside one chunk). Keeping the pool whole (DM_VK_ZEROCOPY_MAX_MB) is NOT an option: a
-# copied 1.5 GB pool is refreshed before every submission and the game stands still.
-env	DM_VK_ZC_CHUNK_MB=384
