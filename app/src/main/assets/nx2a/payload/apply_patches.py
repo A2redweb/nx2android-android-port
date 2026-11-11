@@ -258,4 +258,39 @@ void mtl_sub_fill(uint64_t dst, uint64_t n, uint32_t value) {
 """),
 ])
 
+# 5i. upstream's new shader export (#212) turned every shader whose translator run wrote its SPIR-V but no reflection file into a failure and left it out of the bundle: on Three Houses 323 of 1,380
+# (the lead's field model among the draws that then vanish). Until #212 such a shader was kept with an empty reflection, as every earlier port of the game did, and the game ran. Kept that way again,
+# and the translator's first error lines go to the log (what throws, for a fifth of the game's shaders, is not known yet)
+patch('shader without reflection', 'nxnative/dm/android/tools/shader_products.py', 'NX2A_NOREFL', [
+("""    if not reflection.is_file(): raise ValueError(f'{key}: translator omitted reflection')
+""", """    if not reflection.is_file(): return data, {'_missing': True, 'key': key, 'cbufs': [], 'sbufs': [], 'textures': [], 'images': []}   # NX2A_NOREFL: the SPIR-V is kept, with an empty reflection
+"""),
+("""def validate_bindings(bindings, resource):
+""", """def validate_bindings(bindings, resource):
+    if resource.get('_missing'): return   # NX2A_NOREFL
+"""),
+])
+patch('shader translator errors in the log', 'porter/pipeline.py', 'NX2A_XLERR', [
+("""            elif s.startswith('[RED] '): say(s)
+""", """            elif s.startswith('  translator:'): say(s.strip()[:300])   # NX2A_XLERR
+            elif s.startswith('[RED] '): say(s)
+"""),
+])
+
+# 5j. clang / lld crash now and then inside the phone's Ubuntu (ld.lld "Segmentation fault" in realloc while linking the adrenotools libraries, Three Houses): the same command is run again, up to three times
+patch('retry crashed tools', 'nxnative/dm/android/build.py', 'NX2A_RETRY', [
+("""import argparse, concurrent.futures as cf, os, re, subprocess, sys
+""", """import argparse, concurrent.futures as cf, os, re, subprocess, sys
+_real_run = subprocess.run   # NX2A_RETRY
+def _retry_run(*a, **k):
+    for _ in range(3):
+        r = _real_run(*a, **k)
+        err = getattr(r, 'stderr', None) or ''
+        if r.returncode and (r.returncode < 0 or 'Segmentation fault' in err or 'PLEASE submit a bug report' in err): print('a build tool crashed: running it again', file=sys.stderr); continue
+        break
+    return r
+subprocess.run = _retry_run
+"""),
+])
+
 sys.exit(1 if failed else 0)
