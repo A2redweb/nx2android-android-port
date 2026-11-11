@@ -196,6 +196,13 @@ patch('empty linkdata', 'nxnative/dm/gfx/tools/shader_split.py', 'NX2A_EMPTYDATA
 """),
 ])
 
+# 5d. the survey's instruction census is a report-only step (it feeds survey.md, not the provisional profile) that disassembles every module with Python capstone: minutes to an hour on a phone for a big game
+patch('survey census skipped', 'nxnative/scripts/build_ipa_from_nsp.py', 'NX2A_CENSUS', [
+("""        run([py, repo / 'dm/tools/insn_census.py', m], logs / f'census_{m.name}.log', env=env)
+""", """        (logs / f'census_{m.name}.log').write_text('skipped by the nx2android app: a slow, report-only step (NX2A_CENSUS)\\n')   # NX2A_CENSUS
+"""),
+])
+
 # 6. when the on-device host fails, keep its whole output (the grep for two words left nothing to read for exit 139)
 patch('device host log', 'porter/pipeline.py', "tail -n 30 job.log'", [
 ("""echo "exit $?"; grep -a -e DM_OODLE_JOB -e RED job.log | tail -5'""", """echo "exit $?"; tail -n 30 job.log'"""),
