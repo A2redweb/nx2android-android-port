@@ -209,6 +209,18 @@ patch('strip optional', 'nxnative/dm/android/build.py', 'NX2A_STRIPOPT', [
  """if NX2A_ARM_HOST else str(bin_ / ('llvm-strip.exe' if os.name == 'nt' else 'llvm-strip')), '--strip-unneeded', str(out / 'libdmhost.so')], check=False)  # NX2A_STRIPOPT"""),
 ])
 
+# 5f. this app's own Android keys for an experimental port (profiles/<title id>.android.tsv: env rows and the like), added once to the android.tsv the porter writes; a game upstream has an android.tsv for never gets them
+patch('profile overlays', 'porter/pipeline.py', 'NX2A_OVERLAY', [
+("""        self.use_profile_dir(pdir, first=True)
+        g = game.load(tid)
+        return g, android_profile.AndroidProfile(g)""", """        _ov = Path('@@DIR@@') / f'{tid.upper()}.android.tsv'   # NX2A_OVERLAY
+        if _ov.is_file() and '# nx2android overlay' not in (d / 'android.tsv').read_text(encoding='utf-8'):
+            with open(d / 'android.tsv', 'a', encoding='utf-8') as _f: _f.write('\\n# nx2android overlay\\n' + _ov.read_text(encoding='utf-8'))
+        self.use_profile_dir(pdir, first=True)
+        g = game.load(tid)
+        return g, android_profile.AndroidProfile(g)""".replace('@@DIR@@', str(Path(__file__).resolve().parent / 'profiles'))),
+])
+
 # 6. when the on-device host fails, keep its whole output (the grep for two words left nothing to read for exit 139)
 patch('device host log', 'porter/pipeline.py', "tail -n 30 job.log'", [
 ("""echo "exit $?"; grep -a -e DM_OODLE_JOB -e RED job.log | tail -5'""", """echo "exit $?"; tail -n 30 job.log'"""),

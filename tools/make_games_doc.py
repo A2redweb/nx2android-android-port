@@ -6,7 +6,7 @@ from pathlib import Path
 
 ADDED = [   # (name, title id, status, what this app adds, what you need)
     ('Fire Emblem: Three Houses', '010055D009F78000', 'experimental',
-     'Upstream has the game profile but no Android profile and no way to make its 9 run-time shaders off a Mac. The port runs that step on your phone over adb (payload patch "device glslc capture"), and the empty LINKDATA archive in the game folders no longer stops the shader split.',
+     'Upstream has the game profile but no Android profile and no way to make its 9 run-time shaders off a Mac. The port runs that step on your phone over adb (payload patch "device glslc capture"), the empty LINKDATA archive in the game folders no longer stops the shader split, and a host setting (`DM_VK_ZEROCOPY_MAX_MB=512`, `payload/profiles/`) fixes the lead character\'s model drawing as garbage in the field (a vertex buffer crossing a memory-chunk boundary).',
      'Base game + update 1.2.0 (v327680); Experimental checked; adb connected (Device tab). Runs at 30 fps: the community 60 fps config cannot be used.'),
 ]
 CANDIDATES = [   # asked for, no profile anywhere yet
