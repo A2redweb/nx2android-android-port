@@ -30,6 +30,9 @@ Maintained by [A2redweb](https://github.com/A2redweb), built together with Claud
 - You need your own prod.keys and game dumps. Nothing is included.
 - The GUI only listens on 127.0.0.1, and every request needs a random per-launch token, so other apps on the phone cannot drive it.
 
+## Supported games
+See [docs/SUPPORTED_GAMES.md](docs/SUPPORTED_GAMES.md): the games upstream supports (generated from its Android profiles), the games this app adds on top (currently Fire Emblem: Three Houses), and games asked for that have no profile yet.
+
 ## Games that need adb
 
 A few games need a step upstream runs on a Mac. With wireless debugging paired to this same phone (Device tab: pair, connect), the app runs that step on the phone instead: the game's Oodle-compressed shaders (e.g. Final Fantasy Resonance) and, added here, the 9 shaders Fire Emblem: Three Houses compiles at boot (captured on the phone, then the normal port continues). Port the game version the profile was tested on (base game plus the update), or the on-device step can crash. The Three Houses capture is new and untested on a real phone: send the log if it fails.
