@@ -33,6 +33,7 @@ sys.path.insert(0, str(HERE.parent))
 import porter_sync   # noqa: E402
 import dotnet_probe   # noqa: E402
 import prebuilt   # noqa: E402
+import adb_auto   # noqa: E402
 import server_state   # noqa: E402
 server_state.set_before(SIG_BEFORE)
 REPO = Path(os.environ.get('NX2A_REPO', Path.home() / 'nx2android'))
@@ -393,7 +394,7 @@ class H(BaseHTTPRequestHandler):
             except OSError as e: return self.j({'path': str(p), 'parent': str(p.parent), 'items': [], 'error': str(e)})
         if u.path == '/api/devices':
             out, err, _ = porter('devices', '--json')
-            try: devs = json.loads(out); return self.j({'devices': devs, 'ready': any(d.get('state') == 'device' for d in devs)})
+            try: devs = json.loads(out); return self.j({'devices': devs, 'ready': any(d.get('state') == 'device' for d in devs), 'paired': bool(adb_auto.load().get('paired')), 'note': adb_auto.load().get('last', '')})
             except ValueError: return self.j({'devices': [], 'error': (err or out)[-300:]})
         self.send('not found', 'text/plain', 404)
 
@@ -426,11 +427,23 @@ class H(BaseHTTPRequestHandler):
             if not (d / 'nx2a-data.json').is_file(): return self.j({'started': False, 'error': f'{d} is not a finished data pack (nx2a-data.json is missing). Choose the folder that ends in -data next to the APK.'})
             a = ['install', o['data']] + (['--apk', o['apk']] if o.get('apk') else []) + ['--progress', 'json'] + (['--replace-signer'] if o.get('replace_signer') else [])
             return self.j({'started': start_job([sys.executable, '-m', 'porter', *a], 'install')})
-        if u.path == '/api/adb':   # wireless debugging to this same phone (optional)
-            if o.get('op') not in ('pair', 'connect', 'disconnect'): return self.j({'out': 'bad operation'})
-            cmd = ['adb', o['op'], str(o['host'])] + ([str(o['code'])] if o['op'] == 'pair' and o.get('code') else [])
-            try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=ENV); return self.j({'out': (r.stdout + r.stderr).strip()})
+        if u.path == '/api/adb':   # wireless debugging to this same phone (optional): pair once, the app reconnects by itself afterwards (adb_auto.py)
+            op = o.get('op')
+            if op == 'auto':
+                ok, msg = adb_auto.auto(ENV); return self.j({'out': msg, 'ok': ok})
+            if op == 'forget':
+                adb_auto.save(paired=False, connect='')
+                try: subprocess.run(['adb', 'disconnect'], capture_output=True, text=True, timeout=15, env=ENV)
+                except (OSError, subprocess.TimeoutExpired): pass
+                return self.j({'out': 'Forgotten: the app will not reconnect by itself until you pair again.'})
+            if op not in ('pair', 'connect', 'disconnect'): return self.j({'out': 'bad operation'})
+            cmd = ['adb', op, str(o['host'])] + ([str(o['code'])] if op == 'pair' and o.get('code') else [])
+            try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=ENV)
             except (OSError, subprocess.TimeoutExpired) as e: return self.j({'out': str(e)})
+            out = (r.stdout + r.stderr).strip(); low = out.lower()
+            if op == 'pair' and 'successfully paired' in low: adb_auto.save(paired=True)
+            if op == 'connect' and 'connected to' in low and 'failed' not in low: adb_auto.save(connect=str(o['host']), paired=True)
+            return self.j({'out': out})
         if u.path == '/api/cancel':
             p = JOB['p']
             if p and p.poll() is None: os.killpg(p.pid, signal.SIGKILL)
@@ -472,5 +485,6 @@ if __name__ == '__main__':
     need_porter()
     threading.Thread(target=auto_update, daemon=True).start()
     threading.Thread(target=auto_porter, daemon=True).start()
+    threading.Thread(target=adb_auto.loop, args=(ENV, lambda: not JOB['done']), daemon=True).start()
     print(f'nx2android GUI {VERSION} on 127.0.0.1:{PORT} (porter: {REPO})', flush=True)
     ThreadingHTTPServer(('127.0.0.1', PORT), H).serve_forever()

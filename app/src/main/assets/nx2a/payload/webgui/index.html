@@ -56,7 +56,8 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
  <div class="card"><div class="sm">Optional. Only needed for "Install with adb" or if copying data is blocked on your Android. Settings → Developer options → Wireless debugging → Pair device with pairing code.</div>
  <label>Pairing host:port</label><input type="text" id="phost" placeholder="localhost:37000"><label>Pairing code</label><input type="text" id="pcode"><button class="b g" onclick="adb('pair')">Pair</button>
  <label>Connect host:port</label><input type="text" id="chost" placeholder="localhost:38000"><button class="b" onclick="adb('connect')">Connect</button>
- <button class="b g" onclick="devs()">List devices</button><pre id="adbout" style="margin-top:10px"></pre></div>
+ <button class="b g" onclick="devs()">List devices</button> <button class="b" onclick="adb('auto')">Connect now</button> <button class="b g" onclick="adb('forget')">Forget pairing</button>
+ <div class="sm" style="margin-top:8px">Pair only once. After that the app finds the changing port and reconnects by itself whenever Wireless debugging is on (it checks about once a minute). Wireless debugging needs Wi-Fi to be connected.</div><pre id="adbout" style="margin-top:10px"></pre></div>
 </section>
 <section id="log"><div class="card"><div id="stage" class="sm">idle</div><div class="bar"><i id="pb"></i></div>
  <div class="row"><button class="b g" onclick="cancel()">Cancel</button><button class="b g" onclick="copyLog()">Copy log</button></div></div><pre id="out"></pre></section>
@@ -113,7 +114,7 @@ async function port(){drvSave();const o={folder:$('folder').value,app_name:$('ap
  const r=await api('/api/port',o);if(r.error)return alert(r.error);if(!r.started)alert('A job is already running');tab('log');poll(true)}
 function installApk(){const p=$('apkpath').value;if(!p)return alert('Port a game first, or type the APK path');if(window.NX2A)NX2A.installApk(p);else alert('Open the APK from your file manager: '+p)}
 async function cancel(){await api('/api/cancel',{})}
-async function adbCheck(){try{const r=await api('/api/devices');const ok=!!(r&&r.ready);$('cpbtn').disabled=!ok;$('cpnote').textContent=ok?'adb is connected: Copy data installs the APK if it is not on the phone yet, then copies the game data into Android/data. Large games take several minutes.':'Copy data is locked: it needs adb. Open the Device tab, pair and connect (wireless debugging), then it unlocks. Without adb, copy the data by hand (see docs/COPY_DATA.md in the repo).'}catch(e){}}
+async function adbCheck(){try{const r=await api('/api/devices');const ok=!!(r&&r.ready);$('cpbtn').disabled=!ok;$('cpnote').textContent=ok?'adb is connected: Copy data installs the APK if it is not on the phone yet, then copies the game data into Android/data. Large games take several minutes.':'Copy data is locked: it needs adb. '+(r.paired?'Turn Wireless debugging on: the app reconnects by itself (about a minute), or tap Connect now in the Device tab.':'Open the Device tab and pair once (wireless debugging); after that it connects by itself.')+' Without adb, copy the data by hand (see docs/COPY_DATA.md in the repo).'}catch(e){}}
 async function copyData(){const d=$('datapath').value;if(!d)return alert('Port a game first, or type the data folder path');const r=await api('/api/install',{data:d,apk:$('apkpath').value});if(!r.started){return alert(r.error||'Could not start. Is another job running?')}tab('log');poll(true)}
 setInterval(adbCheck,15000);setTimeout(adbCheck,1500);
 async function adb(op){const host=op=='pair'?$('phost').value:$('chost').value;const r=await api('/api/adb',{op,host,code:$('pcode').value});$('adbout').textContent=r.out;adbCheck()}
