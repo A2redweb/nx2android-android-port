@@ -226,4 +226,16 @@ patch('device host log', 'porter/pipeline.py', "tail -n 30 job.log'", [
 ("""echo "exit $?"; grep -a -e DM_OODLE_JOB -e RED job.log | tail -5'""", """echo "exit $?"; tail -n 30 job.log'"""),
 ])
 
+# 5g. the host cuts a big memory pool into fixed 256 MB chunks and a buffer that crosses a chunk's end gets no GPU buffer (Three Houses' field model of the lead): the chunk size can be set per game (DM_VK_ZC_CHUNK_MB, a multiple of 64; 256 = upstream's)
+patch('zero-copy chunk size', 'nxnative/dm/android/gfx_vk_core.c', 'NX2A_ZCCHUNK', [
+("""#define ZC_CHUNK 0x10000000ull
+""", """static uint64_t zc_chunk_sz(void) {   // NX2A_ZCCHUNK
+    static uint64_t c; if (c) return c;
+    const char *e = getenv("DM_VK_ZC_CHUNK_MB"); long m = e ? atol(e) : 0;
+    c = m >= 64 && m <= 512 && !(m & 63) ? (uint64_t)m << 20 : 0x10000000ull; return c;
+}
+#define ZC_CHUNK zc_chunk_sz()
+"""),
+])
+
 sys.exit(1 if failed else 0)
