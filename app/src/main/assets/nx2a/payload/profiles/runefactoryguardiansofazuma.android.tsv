@@ -1,0 +1,5 @@
+# Rune Factory: Guardians of Azuma (this app's keys for an experimental port; never used once upstream has its own android.tsv)
+# Diagnostics for the low frame rate: the GPU is the limit (GPU 20-200 ms a frame at 1280x720, CPU replay 8-15 ms). A timestamp around every render pass makes the per-frame log line
+# list the passes that cost the most GPU time (size, format, draws); frames over 20 ms list their costliest passes. Remove these rows once the slow pass is known and fixed.
+env	DM_VK_PASS_TIMES=1
+env	DM_VK_PASS_SPIKE=20

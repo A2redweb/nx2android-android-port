@@ -213,9 +213,10 @@ patch('strip optional', 'nxnative/dm/android/build.py', 'NX2A_STRIPOPT', [
 patch('profile overlays', 'porter/pipeline.py', 'NX2A_OVERLAY', [
 ("""        self.use_profile_dir(pdir, first=True)
         g = game.load(tid)
-        return g, android_profile.AndroidProfile(g)""", """        _ov = Path('@@DIR@@') / f'{tid.upper()}.android.tsv'   # NX2A_OVERLAY
-        if _ov.is_file() and '# nx2android overlay' not in (d / 'android.tsv').read_text(encoding='utf-8'):
-            with open(d / 'android.tsv', 'a', encoding='utf-8') as _f: _f.write('\\n# nx2android overlay\\n' + _ov.read_text(encoding='utf-8'))
+        return g, android_profile.AndroidProfile(g)""", """        _nm = next((l.split('\\t', 1)[1].strip() for l in (d / 'game.tsv').read_text(encoding='utf-8').splitlines() if l.startswith('name\\t')), '') if (d / 'game.tsv').is_file() else ''
+        for _ov in (Path('@@DIR@@') / f'{tid.upper()}.android.tsv', Path('@@DIR@@') / (''.join(c for c in _nm.lower() if c.isalnum()) + '.android.tsv')):   # NX2A_OVERLAY: by title id, or by game name (letters and digits only, lower case)
+            if _ov.is_file() and '# nx2android overlay ' + _ov.name not in (d / 'android.tsv').read_text(encoding='utf-8'):
+                with open(d / 'android.tsv', 'a', encoding='utf-8') as _f: _f.write('\\n# nx2android overlay ' + _ov.name + '\\n' + _ov.read_text(encoding='utf-8'))
         self.use_profile_dir(pdir, first=True)
         g = game.load(tid)
         return g, android_profile.AndroidProfile(g)""".replace('@@DIR@@', str(Path(__file__).resolve().parent / 'profiles'))),

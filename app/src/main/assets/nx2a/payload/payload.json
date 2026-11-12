@@ -1,16 +1,17 @@
 {
- "version": 87,
+ "version": 89,
  "setup": 3,
  "porter_sha": "468937822219a56eb81da1aa2e40f05e8c453af2",
  "files": {
   "adb_auto.py": "1bd9b7bc9fba898bc6acbb7eb29a3d4a2ee75427cafb98329ff8fe38ec2232a7",
-  "apply_patches.py": "2b8a01f1a767693f5c0a6cd17d519a0fab49b0926a4101ffe11aa21428e2dab2",
+  "apply_patches.py": "c4dbf9b5dd18256f37ae5df54dbd90b3b215e6e5f8438f8da80c8825e1f3699c",
   "dotnet_probe.py": "866983eb4aa53b567bf69e6574a93b00e315c2a85a2c536e95a123b9ded3e53a",
   "fast_tools.py": "665af40effe497d679cef624e0a0da81874900aa43e9fbfef07d172d7cc32070",
   "inner_setup.sh": "413d6980c1c0c129e90cb1892351dfc7a504b6a3919f78091703e4aba54cdd8c",
   "porter_sync.py": "865583e89eb4d13789a2fd2ba92fd87cda34d8fac83284789bbed895ae4a7530",
   "prebuilt.py": "b12ea35546333547930dac17203f57b9d7f33f7c031c2a8c839033ceb5ff3129",
   "prebuilt_key.py": "7b15021b38f7fcecf4a7d6e016a4a0aaa21c77d8b33dc375338b53fb423999e5",
+  "profiles/runefactoryguardiansofazuma.android.tsv": "d670ca3cd03a95bb18296ad413ef6f67b8f2c6e31ae76e7a50f0ee20984ed9c8",
   "server_state.py": "43eb08dbb456841f78cb56efc902a6642412b07431ae36fc61e4abbe78884802",
   "webgui/index.html": "7a607bbc5006600e8c1fa2b249b591305c460c473d284ed00edaf9a165634861",
   "webgui/server.py": "c0fef345d4daed972df24b1431b436f7687297dea916f290a5d4906769db194d"
