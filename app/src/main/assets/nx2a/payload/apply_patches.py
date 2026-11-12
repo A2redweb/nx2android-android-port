@@ -270,11 +270,33 @@ if (repo / 'nxnative/dm/android/tools/shader_products.py').is_file(): patch('sha
     if resource.get('_missing'): return   # NX2A_NOREFL
 """),
 ])
-if (repo / 'nxnative/dm/android/tools/shader_products.py').is_file(): patch('shader translator errors in the log', 'porter/pipeline.py', 'NX2A_XLERR', [
+# why a shader gets no reflection (the translator wrote its SPIR-V and then threw): its exception types and messages, and which stages are hit, go to the port log (both porter versions)
+_newer = (repo / 'nxnative/dm/android/tools/shader_products.py').is_file()   # upstream's export with products (#212) reports the translator's errors differently
+if not _newer: patch('shader translator errors in the log', 'nxnative/dm/android/tools/shader_vk.py', 'NX2A_XLERR', [
+("""    entries, fails = [], collections.Counter()
+""", """    entries, fails = [], collections.Counter(); nores = []   # NX2A_XLERR
+"""),
+("""        spv = open(spv_p, 'rb').read(); res = json.load(open(res_p)) if os.path.exists(res_p) else {}
+""", """        spv = open(spv_p, 'rb').read(); res = json.load(open(res_p)) if os.path.exists(res_p) else {}
+        if not os.path.exists(res_p): nores.append(k)
+"""),
+("""    for e, n in errs.most_common(8): print(f'  translator: {n:5d}  {e}')
+""", """    for e, n in errs.most_common(8): print(f'  translator: {n:5d}  {e}')
+    reasons = collections.Counter()
+    for e, n in errs.items(): reasons[re.sub(r'^\\[RED\\] [0-9a-fA-F]+: ', '', e)] += n
+    for e, n in reasons.most_common(6): print(f'[RED] translator: {n} x {e}', flush=True)
+    if nores: print(f'[RED] translator: {len(nores)} shaders without reflection, by stage {dict(collections.Counter(stages[k] for k in nores))}, e.g. {" ".join(nores[:3])}', flush=True)
+"""),
+])
+if _newer: patch('shader translator errors in the log (newer)', 'porter/pipeline.py', 'NX2A_XLERR3', [
 ("""            elif s.startswith('[RED] '): say(s)
-""", """            elif s.startswith('  translator:'): say(s.strip()[:300])   # NX2A_XLERR
+""", """            elif s.startswith('  translator:'): say(s.strip()[:300])   # NX2A_XLERR3
             elif s.startswith('[RED] '): say(s)
 """),
+])
+if not _newer: patch('shader translator lines in the log', 'porter/pipeline.py', 'NX2A_XLERR2', [
+("""            elif s.startswith('[RED] this Python has no zstd'): say(s)""", """            elif s.startswith('[RED] translator:'): say(s)   # NX2A_XLERR2
+            elif s.startswith('[RED] this Python has no zstd'): say(s)"""),
 ])
 
 # 5j. clang / lld crash now and then inside the phone's Ubuntu (ld.lld "Segmentation fault" in realloc while linking the adrenotools libraries, Three Houses): the same command is run again, up to three times
