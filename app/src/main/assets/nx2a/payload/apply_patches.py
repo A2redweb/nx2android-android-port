@@ -261,7 +261,7 @@ void mtl_sub_fill(uint64_t dst, uint64_t n, uint32_t value) {
 # 5i. upstream's new shader export (#212) turned every shader whose translator run wrote its SPIR-V but no reflection file into a failure and left it out of the bundle: on Three Houses 323 of 1,380
 # (the lead's field model among the draws that then vanish). Until #212 such a shader was kept with an empty reflection, as every earlier port of the game did, and the game ran. Kept that way again,
 # and the translator's first error lines go to the log (what throws, for a fifth of the game's shaders, is not known yet)
-patch('shader without reflection', 'nxnative/dm/android/tools/shader_products.py', 'NX2A_NOREFL', [
+if (repo / 'nxnative/dm/android/tools/shader_products.py').is_file(): patch('shader without reflection', 'nxnative/dm/android/tools/shader_products.py', 'NX2A_NOREFL', [
 ("""    if not reflection.is_file(): raise ValueError(f'{key}: translator omitted reflection')
 """, """    if not reflection.is_file(): return data, {'_missing': True, 'key': key, 'cbufs': [], 'sbufs': [], 'textures': [], 'images': []}   # NX2A_NOREFL: the SPIR-V is kept, with an empty reflection
 """),
@@ -270,7 +270,7 @@ patch('shader without reflection', 'nxnative/dm/android/tools/shader_products.py
     if resource.get('_missing'): return   # NX2A_NOREFL
 """),
 ])
-patch('shader translator errors in the log', 'porter/pipeline.py', 'NX2A_XLERR', [
+if (repo / 'nxnative/dm/android/tools/shader_products.py').is_file(): patch('shader translator errors in the log', 'porter/pipeline.py', 'NX2A_XLERR', [
 ("""            elif s.startswith('[RED] '): say(s)
 """, """            elif s.startswith('  translator:'): say(s.strip()[:300])   # NX2A_XLERR
             elif s.startswith('[RED] '): say(s)

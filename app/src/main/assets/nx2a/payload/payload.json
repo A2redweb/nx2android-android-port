@@ -1,10 +1,10 @@
 {
- "version": 79,
+ "version": 81,
  "setup": 3,
- "porter_sha": "468937822219a56eb81da1aa2e40f05e8c453af2",
+ "porter_sha": "e9bd2b764608facf841e39292d868ee657eaf634",
  "files": {
   "adb_auto.py": "1bd9b7bc9fba898bc6acbb7eb29a3d4a2ee75427cafb98329ff8fe38ec2232a7",
-  "apply_patches.py": "b855c8589955e38e9499421f3e6eb5ffc0e94b108841eeaf4b67f0ef8ee405ed",
+  "apply_patches.py": "47a1474a04d223f24ac09faf846804c0ff31be6e8f5fe0960d81a52cdd422ad2",
   "dotnet_probe.py": "866983eb4aa53b567bf69e6574a93b00e315c2a85a2c536e95a123b9ded3e53a",
   "fast_tools.py": "665af40effe497d679cef624e0a0da81874900aa43e9fbfef07d172d7cc32070",
   "inner_setup.sh": "413d6980c1c0c129e90cb1892351dfc7a504b6a3919f78091703e4aba54cdd8c",
@@ -15,5 +15,5 @@
   "webgui/index.html": "bd5eb54281407f59e9300cfa67276171caed328af46c7ed1b7fc0f99525498e0",
   "webgui/server.py": "7b4047f4c123214d115d09c325ad53744645277ae83fb41edbed7f4c4d80ef4b"
  },
- "porter_track": "main"
+ "porter_track": "pinned"
 }
