@@ -23,7 +23,7 @@ button.b{padding:11px 14px;border-radius:8px;border:0;background:var(--red);colo
 <main>
 <section id="setup" class="on">
  <div class="card"><div id="checks" class="sm">checking…</div><div class="row"><button class="b g" onclick="doctor()">Re-check</button><button class="b" onclick="tools()">Download missing tools</button></div>
- <div id="pstat" class="sm" style="margin-top:8px"></div><div class="row"><button class="b g" onclick="repair()">Update / repair porter</button></div><div class="row"><button class="b" onclick="prebuiltTools()">Install / check the ready-made tools</button></div><pre id="dnout" style="display:none"></pre>
+ <div id="pstat" class="sm" style="margin-top:8px"></div><div class="row"><button class="b g" onclick="repair()">Update / repair porter</button></div><div class="sm" style="margin-top:8px"><label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="pgood" onchange="porterMode()" style="width:auto;margin-top:3px"><span>Use the porter version known to work instead of upstream's newest. Leave this off normally; turn it on for one port if a port or a game breaks after an update, then turn it off again.</span></label></div><div class="row"><button class="b" onclick="prebuiltTools()">Install / check the ready-made tools</button></div><pre id="dnout" style="display:none"></pre>
  <div class="sm" style="margin-top:8px">First time: the build tools are about 1.5 GB. Keep 6 GB free plus twice the size of each game.</div></div>
  <div class="card"><label>prod.keys path (from your own Switch)</label><div class="row"><input type="text" id="keys" placeholder="/sdcard/switch/prod.keys"><button class="b g" style="flex:none" onclick="pick('keys',false)">Browse</button></div>
  <label>Output folder (default /sdcard/Switch/Ports)</label><div class="row"><input type="text" id="outcfg" placeholder="/sdcard/Switch/Ports"><button class="b g" style="flex:none" onclick="pick('outcfg',true)">Browse</button></div>
@@ -77,8 +77,9 @@ async function api(p,o){let last;for(let i=0;i<4;i++){try{const r=await fetch(p,
 if(window.NX2A)$('quit').style.display='';
 function quit(){if(window.NX2A)NX2A.quit()}
 async function prebuiltTools(){const o=$('dnout');o.style.display='block';o.textContent='downloading and testing the ready-made tools…';const r=await api('/api/prebuilt',{});o.textContent=r.report.join('\n')+'\n\n'+r.state}
+async function porterMode(){const on=$('pgood').checked;$('pstat').textContent=on?'switching to the version known to work…':'switching to upstream\'s newest…';const r=await api('/api/porter_mode',{mode:on?'good':'newest'});$('pstat').textContent='porter: '+r.porter+(r.porter_commit?' · '+r.porter_commit:'')+' — '+r.msg}
 async function repair(){$('pstat').textContent='repairing…';const r=await api('/api/repair',{});$('pstat').textContent='porter: '+r.porter+' — '+r.msg}
-async function status(){try{const s=await api('/api/status');$('pstat').textContent='porter: '+s.porter+(s.porter_commit?' · '+s.porter_commit:'');$('ver').textContent='payload '+s.version;$('ban').style.display=s.update_ready?'block':'none'}catch(e){}}
+async function status(){try{const s=await api('/api/status');$('pstat').textContent='porter: '+s.porter+(s.porter_commit?' · '+s.porter_commit:'');if($('pgood'))$('pgood').checked=s.porter_mode==='good';$('ver').textContent='payload '+s.version;$('ban').style.display=s.update_ready?'block':'none'}catch(e){}}
 async function checkUpdate(){$('ver').textContent='checking…';try{const r=await api('/api/checkupdate',{});await status();if(!r.ready)$('ver').textContent+=' · up to date'}catch(e){$('ver').textContent='check failed'}}
 async function restart(){await api('/api/restart',{});$('ban').textContent='Restarting…';const w=setInterval(async()=>{try{await api('/api/status');clearInterval(w);location.reload()}catch(e){}},1500)}
 async function doctor(){const d=await api('/api/doctor');if(d.error){$('checks').textContent=d.error;return}

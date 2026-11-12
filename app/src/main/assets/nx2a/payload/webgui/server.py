@@ -376,7 +376,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/status':
             try: pat = STATUS.read_text()[-400:]
             except OSError: pat = ''
-            return self.j({'version': VERSION, 'ota': ver(OTA), 'update_ready': ver(OTA) > int(VERSION or 0), 'patches': pat, 'porter': porter_sync.state(), 'porter_commit': porter_sync.commit(), 'update_msg': UPD['msg']})
+            return self.j({'version': VERSION, 'ota': ver(OTA), 'update_ready': ver(OTA) > int(VERSION or 0), 'patches': pat, 'porter': porter_sync.state(), 'porter_commit': porter_sync.commit(), 'porter_mode': porter_sync.mode(), 'porter_good': str(porter_sync._payload().get('porter_good') or '')[:9], 'update_msg': UPD['msg']})
         if u.path == '/api/doctor':
             out, err, code = porter('doctor', '--json')
             try: return self.j({'checks': json.loads(out)})
@@ -476,6 +476,9 @@ class H(BaseHTTPRequestHandler):
             try: Path('/sdcard/Switch').mkdir(parents=True, exist_ok=True); Path('/sdcard/Switch/nx2android-prebuilt-report.txt').write_text('\n'.join(rep))
             except OSError: pass
             return self.j({'report': rep, 'state': prebuilt.state()})
+        if u.path == '/api/porter_mode':   # off (default): the porter follows upstream's newest commit; on: the version known to work (payload.json porter_good). A switch for one port, never a change for everyone
+            porter_sync.set_mode('good' if o.get('mode') == 'good' else 'newest')
+            ok, msg = porter_sync.sync(); return self.j({'ok': ok, 'msg': msg, 'mode': porter_sync.mode(), 'porter': porter_sync.state(), 'porter_commit': porter_sync.commit()})
         if u.path == '/api/repair':
             ok, msg = porter_sync.sync(force=True); return self.j({'ok': ok, 'msg': msg, 'porter': porter_sync.state()})
         if u.path == '/api/restart':

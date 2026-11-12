@@ -24,6 +24,23 @@ def state():
     return 'ok' if not m else 'incomplete: missing ' + ', '.join(m[:3]) + (' ...' if len(m) > 3 else '')
 
 
+MODE = Path(os.environ.get('NX2A_PORTER_MODE', Path.home() / '.config/nx2android/porter_mode'))
+
+
+def mode():
+    """'good' when the person chose the porter version known to work (payload.json porter_good) instead of upstream's newest; otherwise 'newest'."""
+    try: return 'good' if MODE.read_text().strip() == 'good' else 'newest'
+    except OSError: return 'newest'
+
+
+def set_mode(m):
+    MODE.parent.mkdir(parents=True, exist_ok=True)
+    if m == 'good': MODE.write_text('good\n')
+    else:
+        try: MODE.unlink()
+        except OSError: pass
+
+
 def _payload():
     return json.loads((HERE / 'payload.json').read_text())
 
@@ -93,6 +110,7 @@ def _install(sha, log, must_patch):
 def sync(force=False, log=print):
     """Returns (ok, message). Follows upstream's newest commit when the payload says porter_track = main; the pinned commit is the known-good fallback."""
     pl = _payload(); pinned = pl.get('porter_sha'); track = pl.get('porter_track') == 'main'
+    if mode() == 'good' and pl.get('porter_good'): pinned = pl['porter_good']; track = False   # the person's switch: the version known to work, not upstream's newest
     try: have = (REPO / '.nx2a_sha').read_text().strip()
     except OSError: have = ''
     target = pinned
